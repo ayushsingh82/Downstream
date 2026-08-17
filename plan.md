@@ -11,19 +11,20 @@ The defender's question — "package X was compromised at 09:00, which of our se
 | HydraDB feature | How we use it |
 |---|---|
 | `graph-node` (Docker: `ghcr.io/hydra-db/hydradb`) | Local dev node — Bolt `:7687`, HTTPS query API `:8443`, admin/metrics `:9090` |
-| Bolt via `neo4j-driver` (Node/TS) | Primary client for both ingestion and query from Next.js API routes |
-| HTTPS JSON/NDJSON API | Used for large batch ingestion jobs (long-running import scripts) where a pooled Bolt connection is less convenient than plain HTTP |
+| HTTPS JSON query API (`POST /v1/graphs/{graph}/query`) | **The client actually used**, for both ingestion and query. `neo4j-driver` over Bolt was the original plan; HTTP won because Next.js route handlers are short-lived and a pooled TCP connection buys nothing here. The wire contract is documented in `HYDRADB-NOTES.md`. |
 | `UNWIND ... MERGE/CREATE` batch writes | Bulk-load package/version/maintainer/dependency edges from deps.dev and registry data — this is the only way to get millions of edges in without one round trip per edge |
-| `algo.MSpaths` | **The core query.** Given one compromised `PackageVersion` as source and every `Service`/`Lockfile` node as candidate targets, resolve the full reverse-dependency closure in one batched call instead of fanning out client-side per target |
+| `algo.SSpaths` | **The core query.** One compromised `PackageVersion` as source, `relDirection: 'both'` across `RESOLVES_TO`/`PINS`/`HAS_LOCKFILE`/`RUNS`, resolving the reverse-dependency closure in one native call instead of fanning out client-side per target. `algo.MSpaths` (many sources) is the wrong shape for a single compromise event and is reserved for evaluating several compromised versions at once. |
 | `algo.SPpaths` | "Explain this exposure" — the exact shortest path from a specific service back to the compromised version, for the UI's path-highlight view |
 | Property indexes + `WHERE` time-range filters | "Which lockfiles resolved to the bad version while it was live" — filter `Lockfile.resolvedAt` against the compromise window |
-| `causal` reads (hot path) + `strong` read right after an ingest batch | Normal blast-radius queries use causal (fast); the "simulate compromise now" demo flow uses strong immediately after marking a version compromised, so the UI never shows stale state |
+| Bookmarks + `causal` reads | Every response carries a durable sequence. The compromise write hands its bookmark to the traversal that follows, so a `causal` read is guaranteed to observe the flag without paying `strong` on the expensive half. |
 
 ### Graph data model
 
+Property names are snake_case on the vertex, since that is what the Cypher reads.
+
 ```
 (:Package {id, name, ecosystem})                     // ecosystem: npm | pypi
-(:PackageVersion {id, version, publishedAt, compromised, compromisedAt})
+(:PackageVersion {id, version, compromised, compromised_at})
 (:Maintainer {id, name, email})
 (:Project {id, name})                                 // an internal "our service" node
 (:Lockfile {id, projectId, resolvedAt})
@@ -42,15 +43,18 @@ The defender's question — "package X was compromised at 09:00, which of our se
 
 ### Core query shapes
 
-- **Blast radius (batched, many targets)**:
+- **Blast radius** (as implemented — note `relTypes` is a literal, because passing it as a
+  parameter is rejected with "composite parameter is only supported as an UNWIND input"):
   ```cypher
-  CALL algo.MSpaths({
-    sourceLabel: 'PackageVersion', sourceProperty: 'id', sourceValues: [$compromisedVersionId],
-    targetLabel: 'Service', targetProperty: 'id', targetValues: $allServiceIds,
-    relTypes: ['DEPENDS_ON','RESOLVES_TO','PINS','HAS_LOCKFILE','RUNS'],
-    relDirection: 'both', maxLen: 8, pathCount: 50, resultLimit: 500
-  }) YIELD path RETURN path
+  CALL algo.SSpaths({sourceNode: $sourceId,
+                     relTypes: ['RESOLVES_TO','PINS','HAS_LOCKFILE','RUNS'],
+                     relDirection: 'both', maxLen: $maxLen, pathCount: $pathCount})
+    YIELD path RETURN path
   ```
+  Returned paths are decoded app-side into distinct exposed services, keeping the shortest
+  chain per service. `DEPENDS_ON` (declared ranges) was dropped: `RESOLVES_TO` already
+  carries the requirement string, and declared ranges add traversal breadth without adding
+  answerable exposure.
 - **Explain one exposure**: `algo.SPpaths` between one `Service` and the compromised `PackageVersion`.
 - **Shared maintainer**: `MATCH (m:Maintainer)-[:MAINTAINS]->(p:Package) WHERE p.id = $compromisedPkg WITH m MATCH (m)-[:MAINTAINS]->(other:Package) RETURN other`
 - **Live-window resolution**: `MATCH (l:Lockfile)-[:PINS]->(v:PackageVersion {id:$compromisedVersionId}) WHERE l.resolvedAt >= $compromiseStart AND l.resolvedAt <= $compromiseEnd RETURN l`
@@ -73,12 +77,15 @@ We ingest metadata and resolved-dependency graphs only — never install or exec
 
 ```
 src/app/api/ingest/route.ts        # pulls deps.dev + registry data for a package subtree, UNWIND-batches into HydraDB
+src/app/api/service/route.ts       # registers Service -> Project -> Lockfile with pinned versions
+src/app/api/stats/route.ts         # label counts for the console header
 src/app/api/compromise/route.ts    # marks a PackageVersion compromised (demo trigger), strong-reads the blast radius back
 src/app/api/blast-radius/route.ts  # runs algo.MSpaths for a given compromised version against all known services
 src/app/api/typosquat/route.ts     # returns NAME_SIMILAR_TO candidates for a package
 src/lib/hydradb.ts                 # Bolt driver client + HTTP fallback, causal/strong helpers
-src/lib/similarity.ts              # Levenshtein/Jaro-Winkler precompute for typosquat edges
-src/app/page.tsx                   # demo UI: pick a package, "compromise" it, watch blast radius light up as a graph (react-force-graph), see the 09:00→09:06 timer
+src/lib/similarity.ts              # Levenshtein precompute for typosquat edges
+src/lib/graphwrite.ts              # the two UNWIND batch forms HydraDB actually executes
+src/components/incident-console.tsx # demo UI: seed a real graph, compromise a transitive dep, see exposed services with hop chains and a measured elapsed time
 ```
 
 ## 9-day build sequence
@@ -90,3 +97,22 @@ src/app/page.tsx                   # demo UI: pick a package, "compromise" it, w
 5. **Day 7**: Demo UI — graph visualization, compromise timer, path highlight.
 6. **Day 8**: Load-test against a large synthetic incident (many services exposed), polish, write up what the project loses without HydraDB (the MSpaths batched traversal vs. per-target client-side fan-out).
 7. **Day 9**: Record demo video, finalize README, submit.
+
+## Divergences from this plan, and why
+
+Recorded rather than quietly edited, since the plan is part of the submission.
+
+1. **HTTP instead of Bolt.** `neo4j-driver` is not a dependency. Next.js route handlers are
+   short-lived, so a pooled Bolt connection buys nothing, and the HTTP API is the same
+   engine. Consequence: batch writes go through the documented client transport anyway,
+   since `UNWIND` list-of-maps parameters are a transport-level type either way.
+2. **`algo.SSpaths` instead of `algo.MSpaths`.** MSpaths fans *many sources* against a
+   target set. A compromise event has one source, so SSpaths is the correct procedure.
+3. **`DEPENDS_ON` dropped.** `RESOLVES_TO` already carries the requirement string, and
+   declared ranges do not add answerable exposure.
+4. **`Service` and `RUNS` were missing from the code entirely** until they were added — the
+   original schema stopped at `Project`, so the plan's headline query had no target to reach.
+5. **Property indexes** are not created explicitly; the plan listed them but HydraDB's
+   Cypher subset exposes no `CREATE INDEX`, and id-keyed lookups are the fast path already.
+6. **Load-test at "hundreds of thousands of versioned nodes" has not been run.** One real
+   71-version subtree is ingested and verified. This is the largest outstanding gap.

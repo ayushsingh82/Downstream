@@ -18,7 +18,7 @@ const STEPS = [
   {
     num: "03",
     title: "Trace Blast Radius",
-    desc: "algo.MSpaths resolves the reverse-dependency closure against every known service in one batched call — not a client-side fan-out per target.",
+    desc: "algo.SSpaths resolves the reverse-dependency closure from the compromised version in one native call — not a client-side fan-out per target.",
   },
   {
     num: "04",

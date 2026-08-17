@@ -36,7 +36,7 @@ export function Footer() {
             </p>
             <div className="flex flex-col gap-1.5">
               {[
-                "Built on HydraDB algo.MSpaths",
+                "Built on HydraDB algo.SSpaths",
                 "Free tier — No credit card required",
                 "npm + PyPI, more ecosystems soon",
               ].map((item) => (

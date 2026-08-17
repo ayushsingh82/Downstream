@@ -21,7 +21,7 @@ const FEATURES = [
   {
     icon: Network,
     title: "Reverse Dependency Closure",
-    desc: "algo.MSpaths resolves the full transitive blast radius from one compromised version to every exposed service in a single batched call.",
+    desc: "algo.SSpaths resolves the full transitive blast radius from one compromised version to every exposed service in a single native call.",
   },
   {
     icon: GitBranch,

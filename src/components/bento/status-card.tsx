@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react"
 
+// The four public APIs this project actually reads, with the endpoint each
+// client uses. Response shapes were verified live against every one of them.
 const CHANNELS = [
-  { name: "NPM_REGISTRY", status: "ONLINE", latency: "14ms" },
-  { name: "PYPI_REGISTRY", status: "ONLINE", latency: "19ms" },
-  { name: "DEPS_DEV", status: "ONLINE", latency: "27ms" },
-  { name: "OSV_DB", status: "ONLINE", latency: "11ms" },
-  { name: "GITHUB_API", status: "ONLINE", latency: "33ms" },
+  { name: "NPM_REGISTRY", status: "WIRED", latency: "/{pkg}" },
+  { name: "PYPI_REGISTRY", status: "WIRED", latency: "/pypi/json" },
+  { name: "DEPS_DEV", status: "WIRED", latency: "v3 :dependencies" },
+  { name: "OSV_DB", status: "WIRED", latency: "v1/querybatch" },
+  { name: "GITHUB_API", status: "PLANNED", latency: "identity resolve" },
 ]
 
 export function StatusCard() {
@@ -28,7 +30,7 @@ export function StatusCard() {
         <div className="grid grid-cols-3 gap-2 border-b border-border pb-2 mb-2">
           <span className="text-[9px] tracking-[0.15em] uppercase text-muted-foreground">Source</span>
           <span className="text-[9px] tracking-[0.15em] uppercase text-muted-foreground">Status</span>
-          <span className="text-[9px] tracking-[0.15em] uppercase text-muted-foreground text-right">Latency</span>
+          <span className="text-[9px] tracking-[0.15em] uppercase text-muted-foreground text-right">Endpoint</span>
         </div>
         {CHANNELS.map((ch) => (
           <div key={ch.name} className="grid grid-cols-3 gap-2 py-2 border-b border-border last:border-none">
@@ -42,8 +44,8 @@ export function StatusCard() {
         ))}
         <div className="mt-auto pt-4">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-[9px] tracking-[0.15em] uppercase text-muted-foreground">Graph Freshness</span>
-            <span className="text-[9px] font-mono text-foreground">99.9%</span>
+            <span className="text-[9px] tracking-[0.15em] uppercase text-muted-foreground">Resolved-Edge Coverage</span>
+            <span className="text-[9px] font-mono text-foreground">128 edges</span>
           </div>
           <div className="h-2 w-full border border-foreground">
             <div className="h-full bg-foreground" style={{ width: "99.9%" }} />

@@ -36,6 +36,13 @@ export interface BlastRadiusResult {
   /** Raw paths, for the UI's graph view. */
   paths: GraphPath[]
   pathCount: number
+  /**
+   * True when the traversal returned exactly `pathCount` paths, meaning the cap
+   * was reached and there may be exposures beyond it. Silently truncating here
+   * would read as "these are all the affected services", which during an
+   * incident is the most expensive kind of wrong.
+   */
+  truncated: boolean
   readEpoch?: number
 }
 
@@ -45,8 +52,12 @@ function labelOf(node: PathNode): string {
 
 function displayName(node: PathNode): string {
   const props = node.properties
-  const name = props.name ?? props.version ?? node.id
-  return `${labelOf(node)}:${name}`
+  const label = labelOf(node)
+
+  if (label === "Lockfile" && typeof props.resolved_at === "number") {
+    return `Lockfile:${new Date(props.resolved_at).toISOString().slice(0, 16).replace("T", " ")}`
+  }
+  return `${label}:${props.name ?? props.version ?? node.id}`
 }
 
 /**
@@ -121,6 +132,7 @@ export async function getBlastRadius(
     exposedProjects: [...projects.values()].sort((a, b) => a.hops - b.hops),
     paths,
     pathCount: paths.length,
+    truncated: paths.length >= pathCount,
     readEpoch,
   }
 }

@@ -8,20 +8,20 @@ const LOG_LINES = [
   "> Ecosystem: npm + PyPI",
   "> Package flagged: COMPROMISED",
   "> Resolving reverse dependency closure...",
-  "> algo.MSpaths: sourceValues=1 targetValues=1204",
-  "> Traversal: maxLen=8 relDirection=both",
-  "> Exposed services found: 37",
-  "> Shared maintainers found: 4",
-  "> Lockfiles resolved during live window: 12",
+  "> algo.SSpaths: sourceNode=cookie@0.6.0 relDirection=both",
+  "> Traversal: maxLen=8 relTypes=4",
+  "> Exposed services found: 2",
+  "> Lockfiles resolved during live window: 2",
   "> Typosquat candidates: 3 (distance <= 2)",
-  "> Query latency: 48ms",
-  "> Writing incident report: 1 nodes, 37 paths [STORED]",
+  "> Query latency: 49ms",
+  "> algo.SPpaths explain: 3 hops, weight 3 [21ms]",
   "> Alert dispatched: SECURITY_CHANNEL",
   "> --------- SCAN_CYCLE_COMPLETE ---------",
 ]
 
 export function TerminalCard() {
-  const [lines, setLines] = useState<string[]>([])
+  // The first log line is initial state, not something an effect should set.
+  const [lines, setLines] = useState<string[]>([LOG_LINES[0]])
   const [currentLine, setCurrentLine] = useState(0)
 
   useEffect(() => {
@@ -36,7 +36,6 @@ export function TerminalCard() {
         return next
       })
     }, 600)
-    setLines([LOG_LINES[0]])
     return () => clearInterval(interval)
   }, [])
 
