@@ -18,11 +18,27 @@ export async function POST(req: NextRequest) {
   }
 
   const compromisedAt = body.compromisedAt ?? Date.now()
-  await markCompromised(body.ecosystem, body.name, body.version, compromisedAt)
+  const startedAt = Date.now()
 
-  // Strong-consistency read immediately after the write, so the caller sees
-  // the blast radius as of this exact compromise event — not a stale view.
-  const radius = await getBlastRadius(body.ecosystem, body.name, body.version)
+  let marked: { versionId: number; bookmark?: string }
+  try {
+    marked = await markCompromised(body.ecosystem, body.name, body.version, compromisedAt)
+  } catch (error) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 404 })
+  }
 
-  return NextResponse.json({ ok: true, compromisedAt, blastRadius: radius })
+  // The write's bookmark is threaded into the read, so a `causal` read is
+  // guaranteed to observe the compromise flag we just set without paying for
+  // `strong` consistency on the traversal itself — which is the expensive half.
+  const blastRadius = await getBlastRadius(body.ecosystem, body.name, body.version, {
+    bookmark: marked.bookmark,
+  })
+
+  return NextResponse.json({
+    ok: true,
+    compromisedAt,
+    elapsedMs: Date.now() - startedAt,
+    versionId: marked.versionId,
+    blastRadius,
+  })
 }

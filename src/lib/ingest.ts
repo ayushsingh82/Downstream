@@ -1,8 +1,9 @@
-import { runQuery } from "./hydradb"
+import { HydraSession } from "./hydradb"
 import { stableId } from "./id"
 import { getDependencyGraph, type Ecosystem } from "./depsdev"
 import { getRegistryMeta } from "./registry"
 import { findTyposquatCandidates } from "./similarity"
+import { writeVertices, writeEdges, chunk, type VertexRow, type EdgeRow } from "./graphwrite"
 
 export function packageId(ecosystem: Ecosystem, name: string): number {
   return stableId(`pkg:${ecosystem}:${name}`)
@@ -12,18 +13,31 @@ export function versionId(ecosystem: Ecosystem, name: string, version: string): 
   return stableId(`pkgver:${ecosystem}:${name}@${version}`)
 }
 
+export function projectId(name: string): number {
+  return stableId(`project:${name}`)
+}
+
+export function serviceId(name: string): number {
+  return stableId(`service:${name}`)
+}
+
 export interface IngestSubtreeResult {
   packagesIngested: number
   versionsIngested: number
   edgesIngested: number
   maintainersIngested: number
+  bookmark?: string
 }
 
 /**
  * Pulls the resolved (not just declared) dependency graph for one package
  * version from deps.dev, plus registry maintainer metadata for the root
- * package, and batch-loads it into HydraDB via the documented two-pass
- * UNWIND shape: upsert vertices, then MATCH-and-connect (cypher-compat.md).
+ * package, and batch-loads it into HydraDB.
+ *
+ * deps.dev returns a node list plus edges indexed into it, which is already the
+ * shape we want: the edges are between concrete resolved versions, so they
+ * become PackageVersion→PackageVersion RESOLVES_TO edges directly. Declared
+ * semver ranges alone could not answer "what actually got installed."
  */
 export async function ingestPackageSubtree(
   ecosystem: Ecosystem,
@@ -31,90 +45,97 @@ export async function ingestPackageSubtree(
   version: string
 ): Promise<IngestSubtreeResult> {
   const graph = await getDependencyGraph(ecosystem, name, version)
+  const session = new HydraSession()
 
   const nodeIdByIndex = graph.nodes.map((n) =>
     versionId(ecosystem, n.versionKey.name, n.versionKey.version)
   )
 
-  const packageRows = new Map<number, { vertex: number; name: string; ecosystem: string }>()
-  const versionRows: { vertex: number; package_id: number; version: string }[] = []
+  const packageRows = new Map<number, VertexRow>()
+  const versionRows = new Map<number, VertexRow>()
+  const hasVersionEdges = new Map<string, EdgeRow>()
 
   for (const node of graph.nodes) {
     const pkgId = packageId(ecosystem, node.versionKey.name)
+    const verId = versionId(ecosystem, node.versionKey.name, node.versionKey.version)
+
     packageRows.set(pkgId, { vertex: pkgId, name: node.versionKey.name, ecosystem })
-    versionRows.push({
-      vertex: versionId(ecosystem, node.versionKey.name, node.versionKey.version),
+    versionRows.set(verId, {
+      vertex: verId,
       package_id: pkgId,
       version: node.versionKey.version,
+      compromised: false,
+      compromised_at: 0,
     })
+    hasVersionEdges.set(`${pkgId}:${verId}`, { from: pkgId, to: verId })
   }
 
-  await runQuery(
-    `UNWIND $rows AS row MERGE (n {id: row.vertex}) SET n:Package, n.name = row.name, n.ecosystem = row.ecosystem`,
-    { params: { rows: [...packageRows.values()] }, consistency: "strong" }
-  )
-  await runQuery(
-    `UNWIND $rows AS row MERGE (n {id: row.vertex}) SET n:PackageVersion, n.package_id = row.package_id, n.version = row.version`,
-    { params: { rows: versionRows }, consistency: "strong" }
-  )
-  await runQuery(
-    `UNWIND $rows AS row
-     MATCH (p {id: row.package_id}), (v {id: row.vertex})
-     MERGE (p)-[:HAS_VERSION]->(v)`,
-    { params: { rows: versionRows }, consistency: "strong" }
-  )
+  for (const batch of chunk([...packageRows.values()])) {
+    await writeVertices(session, "Package", batch)
+  }
+  for (const batch of chunk([...versionRows.values()])) {
+    await writeVertices(session, "PackageVersion", batch)
+  }
+  for (const batch of chunk([...hasVersionEdges.values()])) {
+    await writeEdges(session, "Package", "HAS_VERSION", "PackageVersion", batch)
+  }
 
-  const edgeRows = graph.edges.map((e) => ({
-    source_vertex: nodeIdByIndex[e.fromNode],
-    destination_vertex: nodeIdByIndex[e.toNode],
-    requirement: e.requirement,
-  }))
+  // deps.dev's edge list can name the same (from, to) pair more than once when
+  // a dependency is reached by several requirement strings; collapse them so
+  // one edge carries one requirement rather than issuing redundant writes.
+  const resolvesEdges = new Map<string, EdgeRow>()
+  for (const edge of graph.edges) {
+    const from = nodeIdByIndex[edge.fromNode]
+    const to = nodeIdByIndex[edge.toNode]
+    if (from === undefined || to === undefined) continue
+    resolvesEdges.set(`${from}:${to}`, { from, to, requirement: edge.requirement ?? "" })
+  }
 
-  if (edgeRows.length > 0) {
-    await runQuery(
-      `UNWIND $rows AS row
-       MATCH (s {id: row.source_vertex}), (d {id: row.destination_vertex})
-       MERGE (s)-[r:RESOLVES_TO]->(d)
-       SET r.requirement = row.requirement`,
-      { params: { rows: edgeRows }, consistency: "strong" }
+  let edgesIngested = 0
+  for (const batch of chunk([...resolvesEdges.values()])) {
+    edgesIngested += await writeEdges(
+      session,
+      "PackageVersion",
+      "RESOLVES_TO",
+      "PackageVersion",
+      batch
     )
   }
 
-  const maintainersIngested = await ingestMaintainers(ecosystem, name)
+  const maintainersIngested = await ingestMaintainers(ecosystem, name, session)
 
   return {
     packagesIngested: packageRows.size,
-    versionsIngested: versionRows.length,
-    edgesIngested: edgeRows.length,
+    versionsIngested: versionRows.size,
+    edgesIngested,
     maintainersIngested,
+    bookmark: session.lastBookmark,
   }
 }
 
 /** Fetches registry maintainer data for one package and links it into the graph. */
-export async function ingestMaintainers(ecosystem: Ecosystem, name: string): Promise<number> {
+export async function ingestMaintainers(
+  ecosystem: Ecosystem,
+  name: string,
+  existing?: HydraSession
+): Promise<number> {
+  const session = existing ?? new HydraSession()
   const meta = await getRegistryMeta(ecosystem, name)
   const pkgId = packageId(ecosystem, name)
 
   if (meta.maintainers.length === 0) return 0
 
-  const rows = meta.maintainers.map((m) => ({
+  const vertexRows: VertexRow[] = meta.maintainers.map((m) => ({
     vertex: stableId(`maintainer:${ecosystem}:${m.name}`),
     name: m.name,
-    package_id: pkgId,
+    email: m.email ?? "",
   }))
+  const edgeRows: EdgeRow[] = vertexRows.map((row) => ({ from: row.vertex, to: pkgId }))
 
-  await runQuery(
-    `UNWIND $rows AS row MERGE (n {id: row.vertex}) SET n:Maintainer, n.name = row.name`,
-    { params: { rows }, consistency: "strong" }
-  )
-  await runQuery(
-    `UNWIND $rows AS row
-     MATCH (m {id: row.vertex}), (p {id: row.package_id})
-     MERGE (m)-[:MAINTAINS]->(p)`,
-    { params: { rows }, consistency: "strong" }
-  )
+  await writeVertices(session, "Maintainer", vertexRows)
+  await writeEdges(session, "Maintainer", "MAINTAINS", "Package", edgeRows)
 
-  return rows.length
+  return vertexRows.length
 }
 
 export interface LockfileEntry {
@@ -122,51 +143,56 @@ export interface LockfileEntry {
   version: string
 }
 
-/** Registers a consuming project + one lockfile snapshot pinning specific resolved versions. */
-export async function ingestLockfile(
+/**
+ * Registers the consuming side of the graph: a Service that runs a Project,
+ * whose Lockfile pins specific resolved versions. The Service layer is what
+ * makes the blast-radius answer operational — "which of our services is
+ * exposed" rather than "which of our repos."
+ */
+export async function ingestService(
+  serviceName: string,
   projectName: string,
   ecosystem: Ecosystem,
   entries: LockfileEntry[],
   resolvedAt: number
-): Promise<{ lockfileId: number }> {
-  const projectId = stableId(`project:${projectName}`)
+): Promise<{ serviceId: number; projectId: number; lockfileId: number; pinned: number }> {
+  const session = new HydraSession()
+
+  const svcId = serviceId(serviceName)
+  const projId = projectId(projectName)
   const lockfileId = stableId(`lockfile:${projectName}:${resolvedAt}`)
 
-  await runQuery(`MERGE (p {id: $projectId}) SET p:Project, p.name = $projectName`, {
-    params: { projectId, projectName },
-    consistency: "strong",
-  })
-  await runQuery(
-    `MERGE (l {id: $lockfileId}) SET l:Lockfile, l.project_id = $projectId, l.resolved_at = $resolvedAt`,
-    { params: { lockfileId, projectId, resolvedAt }, consistency: "strong" }
-  )
-  await runQuery(`MATCH (p {id: $projectId}), (l {id: $lockfileId}) MERGE (p)-[:HAS_LOCKFILE]->(l)`, {
-    params: { projectId, lockfileId },
-    consistency: "strong",
-  })
+  await writeVertices(session, "Service", [{ vertex: svcId, name: serviceName }])
+  await writeVertices(session, "Project", [{ vertex: projId, name: projectName }])
+  await writeVertices(session, "Lockfile", [
+    { vertex: lockfileId, project_id: projId, resolved_at: resolvedAt },
+  ])
 
-  const rows = entries.map((e) => ({
-    lockfile_id: lockfileId,
-    version_vertex: versionId(ecosystem, e.name, e.version),
+  await writeEdges(session, "Service", "RUNS", "Project", [{ from: svcId, to: projId }])
+  await writeEdges(session, "Project", "HAS_LOCKFILE", "Lockfile", [
+    { from: projId, to: lockfileId },
+  ])
+
+  // A lockfile can only pin versions that exist as vertices — the UNWIND edge
+  // form MATCHes both endpoints, so an entry for a version we never ingested is
+  // silently skipped rather than creating a dangling node. Count what landed.
+  const pinRows: EdgeRow[] = entries.map((e) => ({
+    from: lockfileId,
+    to: versionId(ecosystem, e.name, e.version),
   }))
-
-  if (rows.length > 0) {
-    await runQuery(
-      `UNWIND $rows AS row
-       MATCH (l {id: row.lockfile_id}), (v {id: row.version_vertex})
-       MERGE (l)-[:PINS]->(v)`,
-      { params: { rows }, consistency: "strong" }
-    )
+  let pinned = 0
+  for (const batch of chunk(pinRows)) {
+    pinned += await writeEdges(session, "Lockfile", "PINS", "PackageVersion", batch)
   }
 
-  return { lockfileId }
+  return { serviceId: svcId, projectId: projId, lockfileId, pinned }
 }
 
 /**
- * Precomputes name-similarity ("typosquat") candidates for one package
- * against a corpus of other known package names, and stores them as
- * NAME_SIMILAR_TO edges — HydraDB's Cypher subset has no string-distance
- * functions, so this has to happen at ingest time (see similarity.ts).
+ * Precomputes name-similarity ("typosquat") candidates for one package against
+ * a corpus of other known package names, stored as NAME_SIMILAR_TO edges.
+ * HydraDB's WHERE has no string-distance or substring operators at all — no
+ * CONTAINS, no ENDS WITH — so this cannot be a query-time computation.
  */
 export async function ingestTyposquatEdges(
   ecosystem: Ecosystem,
@@ -177,34 +203,60 @@ export async function ingestTyposquatEdges(
   const candidates = findTyposquatCandidates(name, corpus, maxDistance)
   if (candidates.length === 0) return 0
 
+  const session = new HydraSession()
   const pkgId = packageId(ecosystem, name)
-  const rows = candidates.map((c) => ({
-    source_vertex: pkgId,
-    destination_vertex: packageId(ecosystem, c.name),
+
+  // Candidates must exist as Package vertices for the edge MATCH to bind.
+  const vertexRows: VertexRow[] = candidates.map((c) => ({
+    vertex: packageId(ecosystem, c.name),
+    name: c.name,
+    ecosystem,
+  }))
+  await writeVertices(session, "Package", vertexRows)
+
+  const edgeRows: EdgeRow[] = candidates.map((c) => ({
+    from: pkgId,
+    to: packageId(ecosystem, c.name),
     distance: c.distance,
   }))
 
-  await runQuery(
-    `UNWIND $rows AS row
-     MATCH (s {id: row.source_vertex}), (d {id: row.destination_vertex})
-     MERGE (s)-[r:NAME_SIMILAR_TO]->(d)
-     SET r.distance = row.distance`,
-    { params: { rows }, consistency: "strong" }
-  )
-  return rows.length
+  let written = 0
+  for (const batch of chunk(edgeRows)) {
+    written += await writeEdges(session, "Package", "NAME_SIMILAR_TO", "Package", batch)
+  }
+  return written
 }
 
-/** Flags one package version compromised at a point in time (epoch ms). */
+/**
+ * Flags one package version compromised at a point in time (epoch ms).
+ * MATCH-then-SET is the one mutation form that works on an existing vertex
+ * without going through UNWIND. Note that it returns 200 with no rows when
+ * nothing matched, so we confirm the version exists first — otherwise
+ * "compromise express@9.9.9" would look like it succeeded.
+ */
 export async function markCompromised(
   ecosystem: Ecosystem,
   name: string,
   version: string,
   compromisedAt: number
-): Promise<{ versionId: number }> {
+): Promise<{ versionId: number; bookmark?: string }> {
   const vId = versionId(ecosystem, name, version)
-  await runQuery(`MATCH (v {id: $versionId}) SET v.compromised = true, v.compromised_at = $compromisedAt`, {
-    params: { versionId: vId, compromisedAt },
-    consistency: "strong",
-  })
-  return { versionId: vId }
+  const session = new HydraSession("strong")
+
+  const { rows } = await session.run<{ id: number }>(
+    `MATCH (v:PackageVersion) WHERE v.id = $versionId RETURN v.id AS id`,
+    { versionId: vId }
+  )
+  if (rows.length === 0) {
+    throw new Error(
+      `${ecosystem}:${name}@${version} is not in the graph — ingest it before marking it compromised`
+    )
+  }
+
+  await session.run(
+    `MATCH (v {id: $versionId}) SET v.compromised = true, v.compromised_at = $compromisedAt`,
+    { versionId: vId, compromisedAt }
+  )
+
+  return { versionId: vId, bookmark: session.lastBookmark }
 }

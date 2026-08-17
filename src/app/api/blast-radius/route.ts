@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getBlastRadius, getSharedMaintainerPackages, getLiveWindowLockfiles } from "@/lib/blastradius"
+import {
+  getBlastRadius,
+  getSharedMaintainerPackages,
+  getLiveWindowLockfiles,
+  explainExposure,
+} from "@/lib/blastradius"
 import type { Ecosystem } from "@/lib/depsdev"
 
 export async function GET(req: NextRequest) {
@@ -14,12 +19,21 @@ export async function GET(req: NextRequest) {
 
   const windowStart = Number(params.get("windowStart") ?? 0)
   const windowEnd = Number(params.get("windowEnd") ?? Date.now())
+  const explainProject = params.get("explainProject")
 
-  const [radius, sharedMaintainerPackages, liveWindowLockfiles] = await Promise.all([
+  const startedAt = Date.now()
+  const [radius, sharedMaintainerPackages, liveWindowLockfiles, explanation] = await Promise.all([
     getBlastRadius(ecosystem, name, version),
     getSharedMaintainerPackages(ecosystem, name),
     getLiveWindowLockfiles(ecosystem, name, version, windowStart, windowEnd),
+    explainProject ? explainExposure(ecosystem, name, version, explainProject) : Promise.resolve(null),
   ])
 
-  return NextResponse.json({ radius, sharedMaintainerPackages, liveWindowLockfiles })
+  return NextResponse.json({
+    radius,
+    sharedMaintainerPackages,
+    liveWindowLockfiles,
+    explanation,
+    elapsedMs: Date.now() - startedAt,
+  })
 }
