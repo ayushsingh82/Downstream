@@ -146,6 +146,7 @@ export function IncidentConsole() {
       const ingested = await post("/api/ingest", {
         ...SCENARIO.root,
         typosquatCorpus: ["expres", "expressjs", "express", "expresss", "react"],
+        linkGithub: true,
       })
       append(
         "ok",
@@ -153,6 +154,17 @@ export function IncidentConsole() {
       )
       if (ingested.typosquatEdges) {
         append("ok", `precomputed ${ingested.typosquatEdges} NAME_SIMILAR_TO edges`)
+      }
+      if (ingested.github?.repo) {
+        append(
+          "ok",
+          `github ${ingested.github.repo} → ${ingested.github.identitiesIngested} identities` +
+            (ingested.github.overlappingHandles?.length
+              ? `, ${ingested.github.overlappingHandles.length} handle(s) match a registry maintainer exactly: ${ingested.github.overlappingHandles.join(", ")}`
+              : "")
+        )
+      } else if (ingested.github?.error) {
+        append("warn", `github identity lookup skipped — ${ingested.github.error}`)
       }
 
       for (const service of SCENARIO.services) {

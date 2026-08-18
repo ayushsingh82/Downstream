@@ -108,6 +108,14 @@ So the answer was restructured into two queries that are honest about what they 
       `maintainer_email`/`author_email` as RFC-5322 address lists and left the bare-name
       fields null, so the old code returned zero maintainers for `requests`, `urllib3` and
       most of the ecosystem — silently disabling the shared-maintainer pivot for all of PyPI
+- [x] **GitHub identity resolution** (`src/lib/github.ts`) — deps.dev's `SOURCE_REPO` link →
+      GitHub repo owner + top contributors, stored as `Maintainer {source: "github"}` against
+      the same Package so the shared-maintainer pivot spans both name spaces. Verified live:
+      `expressjs/express` → 11 identities, 2 handles byte-identical to npm maintainers
+      (`wesleytodd`, `UlisesGascon`); with `body-parser` also ingested, compromising
+      `express` now surfaces `body-parser` via a shared identity that the registry
+      maintainer lists alone did not connect. Handle equality is reported as a hint, not
+      asserted as sameness — identity resolution proper is still unsolved
 - [x] Landing-page metrics replaced with measured figures; the fabricated "500K+ versions",
       "48ms p50", and "99.9% uptime SLA" claims are gone, and `algo.MSpaths` references
       corrected to `SSpaths`
@@ -122,8 +130,6 @@ So the answer was restructured into two queries that are honest about what they 
       per incident; nothing here does that yet.
 - [ ] **Typosquat corpus is caller-supplied.** A real deployment needs a background job
       populating it from the broader registry.
-- [ ] **GitHub API integration** (maintainer identity resolution, org membership) is listed
-      in plan.md and not started.
 - [ ] **The advisory scan reads an arbitrary slice of the graph.** `LIMIT` with no ordering,
       because this Cypher subset has no way to filter package names by pattern — so on a
       graph that also holds load-test data, the scan can spend its OSV budget on synthetic

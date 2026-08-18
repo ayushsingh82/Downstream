@@ -143,7 +143,7 @@ Readiness check: `curl -sf localhost:9090/readyz`.
 |---|---|
 | `GET /api/health` | graph-node reachability (`/readyz`) |
 | `GET /api/stats` | Package / version / service counts |
-| `POST /api/ingest` | Pull a deps.dev subtree + registry maintainers into the graph |
+| `POST /api/ingest` | Pull a deps.dev subtree + registry maintainers into the graph (`linkGithub: true` also resolves the source repo's GitHub identities) |
 | `POST /api/service` | Register a Service → Project → Lockfile with pinned versions |
 | `POST /api/compromise` | Flag a version, then bookmark-read its blast radius back |
 | `GET /api/blast-radius` | Blast radius + shared maintainers + live-window lockfiles + optional path explanation |
@@ -197,6 +197,7 @@ Cypher in `src/lib/`.
 | [npm registry API](https://registry.npmjs.org) | Package metadata, maintainers, publish times | public API |
 | [PyPI JSON API](https://pypi.org) | Package metadata, releases | public API |
 | [OSV.dev](https://osv.dev) (Google) | Real vulnerability / malicious-package records | public API, Apache-2.0 project |
+| [GitHub REST API](https://docs.github.com/rest) | Source-repo owner and contributors, for identity resolution | public API (60 req/hour unauthenticated; set `GITHUB_TOKEN` to raise) |
 | TanStack npm/PyPI incident (May 2025) | Scenario shape, from public advisory reporting only | — |
 | Next.js, React, Tailwind CSS, Framer Motion, lucide-react, Geist | App framework and UI | MIT / Apache-2.0 |
 

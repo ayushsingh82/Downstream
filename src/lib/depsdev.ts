@@ -58,6 +58,39 @@ export interface DepsDevPackageInfo {
 }
 
 /** Package metadata, including all known versions. */
+export interface DepsDevLink {
+  label: string
+  url: string
+}
+
+export interface DepsDevVersionInfo {
+  versionKey: DepsDevVersionKey
+  publishedAt?: string
+  links?: DepsDevLink[]
+}
+
+/**
+ * GET /v3/systems/{system}/packages/{name}/versions/{version} — per-version
+ * metadata. The useful part here is `links`, which carries a `SOURCE_REPO`
+ * entry pointing at the forge; that is what connects a published package to the
+ * repository whose contributors can change it.
+ */
+export async function getVersionInfo(
+  ecosystem: Ecosystem,
+  name: string,
+  version: string
+): Promise<DepsDevVersionInfo> {
+  const system = SYSTEM_MAP[ecosystem]
+  const url = `${BASE_URL}/systems/${system}/packages/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}`
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error(
+      `deps.dev version info request failed (${res.status}) for ${ecosystem}/${name}@${version}`
+    )
+  }
+  return res.json()
+}
+
 export async function getPackageInfo(ecosystem: Ecosystem, name: string): Promise<DepsDevPackageInfo> {
   const system = SYSTEM_MAP[ecosystem]
   const url = `${BASE_URL}/systems/${system}/packages/${encodeURIComponent(name)}`

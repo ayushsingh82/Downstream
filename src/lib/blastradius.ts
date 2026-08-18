@@ -216,7 +216,11 @@ export interface MaintainerRow {
 export async function getMaintainers(ecosystem: Ecosystem, name: string): Promise<MaintainerRow[]> {
   const pkgId = packageId(ecosystem, name)
   const { rows } = await runQuery<MaintainerRow>(
-    `MATCH (m:Maintainer)-[:MAINTAINS]->(p:Package) WHERE p.id = $pkgId
+    // The id binds inside the pattern, not in a WHERE: the pattern form uses the
+    // id index, the WHERE form scans the label. Same rows, 14x apart on a large
+    // graph, and past a certain size the scanning form exceeds the 120s query
+    // ceiling and returns nothing at all. Every id-keyed read here follows this.
+    `MATCH (m:Maintainer)-[:MAINTAINS]->(p:Package {id: $pkgId})
      RETURN DISTINCT m.id AS id, m.name AS name`,
     { params: { pkgId } }
   )
@@ -248,8 +252,8 @@ export async function getSharedMaintainerPackages(
   const results = new Map<number, SharedPackageRow>()
   for (const maintainer of maintainers) {
     const { rows } = await runQuery<Omit<SharedPackageRow, "viaMaintainer">>(
-      `MATCH (m:Maintainer)-[:MAINTAINS]->(other:Package)
-       WHERE m.id = $maintainerId AND other.id <> $pkgId
+      `MATCH (m:Maintainer {id: $maintainerId})-[:MAINTAINS]->(other:Package)
+       WHERE other.id <> $pkgId
        RETURN other.id AS id, other.name AS name, other.ecosystem AS ecosystem`,
       { params: { maintainerId: maintainer.id, pkgId } }
     )
@@ -276,8 +280,8 @@ export async function getLiveWindowLockfiles(
 ): Promise<LiveWindowLockfileRow[]> {
   const vId = versionId(ecosystem, name, version)
   const { rows } = await runQuery<LiveWindowLockfileRow>(
-    `MATCH (l:Lockfile)-[:PINS]->(v:PackageVersion)
-     WHERE v.id = $versionId AND l.resolved_at >= $windowStart AND l.resolved_at <= $windowEnd
+    `MATCH (l:Lockfile)-[:PINS]->(v:PackageVersion {id: $versionId})
+     WHERE l.resolved_at >= $windowStart AND l.resolved_at <= $windowEnd
      RETURN l.id AS id, l.project_id AS projectId, l.resolved_at AS resolvedAt`,
     { params: { versionId: vId, windowStart, windowEnd } }
   )
@@ -297,7 +301,7 @@ export async function getTyposquatCandidates(
 ): Promise<TyposquatRow[]> {
   const pkgId = packageId(ecosystem, name)
   const { rows } = await runQuery<TyposquatRow>(
-    `MATCH (p:Package)-[r:NAME_SIMILAR_TO]->(other:Package) WHERE p.id = $pkgId
+    `MATCH (p:Package {id: $pkgId})-[r:NAME_SIMILAR_TO]->(other:Package)
      RETURN other.id AS id, other.name AS name, r.distance AS distance
      ORDER BY distance`,
     { params: { pkgId } }

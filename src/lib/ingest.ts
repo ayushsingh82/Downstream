@@ -1,8 +1,9 @@
 import { HydraSession } from "./hydradb"
 import { stableId } from "./id"
-import { getDependencyGraph, type Ecosystem } from "./depsdev"
+import { getDependencyGraph, getVersionInfo, type Ecosystem } from "./depsdev"
 import { getRegistryMeta } from "./registry"
 import { findTyposquatCandidates } from "./similarity"
+import { getRepoIdentities, parseGithubUrl } from "./github"
 import { writeVertices, writeEdges, chunk, type VertexRow, type EdgeRow } from "./graphwrite"
 
 export function packageId(ecosystem: Ecosystem, name: string): number {
@@ -136,6 +137,75 @@ export async function ingestMaintainers(
   await writeEdges(session, "Maintainer", "MAINTAINS", "Package", edgeRows)
 
   return vertexRows.length
+}
+
+export interface GithubIdentityResult {
+  /** "owner/repo" as GitHub reports it, or null when there is no GitHub source. */
+  repo: string | null
+  identitiesIngested: number
+  /** Registry maintainers whose handle matches a GitHub login exactly. */
+  overlappingHandles: string[]
+}
+
+/**
+ * Links the GitHub identities behind a package into the graph.
+ *
+ * The registry says who can publish; the repository says who can merge. Storing
+ * both against the same Package is what makes the shared-maintainer pivot
+ * ("this account was taken over — what else could they reach") span the two
+ * name spaces instead of stopping at the registry's edge.
+ *
+ * Identities are stored as `Maintainer` with a `source` property rather than as
+ * a separate label, so the existing pivot query picks them up unchanged. Where
+ * an npm handle and a GitHub login are byte-identical they are reported as
+ * overlapping — that is a hint for a human, not a claim that two accounts are
+ * one person. Real identity resolution is not solved here.
+ */
+export async function ingestGithubIdentities(
+  ecosystem: Ecosystem,
+  name: string,
+  version: string,
+  existing?: HydraSession
+): Promise<GithubIdentityResult> {
+  const info = await getVersionInfo(ecosystem, name, version)
+  const sourceRepo = info.links?.find((link) => link.label === "SOURCE_REPO")
+  const ref = parseGithubUrl(sourceRepo?.url)
+  if (!ref) return { repo: null, identitiesIngested: 0, overlappingHandles: [] }
+
+  const { identities, fullName } = await getRepoIdentities(ref)
+  if (identities.length === 0) return { repo: fullName, identitiesIngested: 0, overlappingHandles: [] }
+
+  const session = existing ?? new HydraSession()
+  const pkgId = packageId(ecosystem, name)
+
+  const vertexRows: VertexRow[] = identities.map((identity) => ({
+    vertex: stableId(`maintainer:github:${identity.login}`),
+    name: identity.login,
+    email: "",
+    source: "github",
+    role: identity.role,
+    contributions: identity.contributions,
+  }))
+
+  await writeVertices(session, "Maintainer", vertexRows)
+  await writeVertices(session, "Package", [
+    { vertex: pkgId, name, ecosystem, repo: fullName },
+  ])
+  await writeEdges(
+    session,
+    "Maintainer",
+    "MAINTAINS",
+    "Package",
+    vertexRows.map((row) => ({ from: row.vertex, to: pkgId }))
+  )
+
+  const registry = await getRegistryMeta(ecosystem, name).catch(() => null)
+  const registryHandles = new Set((registry?.maintainers ?? []).map((m) => m.name.toLowerCase()))
+  const overlappingHandles = identities
+    .map((identity) => identity.login)
+    .filter((login) => registryHandles.has(login.toLowerCase()))
+
+  return { repo: fullName, identitiesIngested: identities.length, overlappingHandles }
 }
 
 export interface LockfileEntry {
