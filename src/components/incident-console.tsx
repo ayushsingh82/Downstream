@@ -1,20 +1,36 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { BlastGraph, type GraphPath } from "./blast-graph"
 
 interface ExposedService {
   serviceId: number
   serviceName: string
   hops: number
   via: string[]
+  /** Which pass found it — the lockfile lookup, or the upstream walk. */
+  foundBy?: "lockfile" | "closure"
 }
 
 interface BlastRadius {
+  mode: "exhaustive" | "sspaths"
   sourceId: number
   exposedServices: ExposedService[]
   exposedProjects: { projectId: number; projectName: string; hops: number }[]
+  paths: GraphPath[]
   pathCount: number
   truncated: boolean
+  /** Present in exhaustive mode: how much of the graph the closure walked. */
+  closure?: {
+    versionsReached: number
+    nodesReached: number
+    rounds: number
+    queries: number
+    directHits: number
+    closureOnlyHits: number
+    directMs: number
+    closureMs: number
+  }
 }
 
 interface Stats {
@@ -75,6 +91,7 @@ export function IncidentConsole() {
   const [elapsed, setElapsed] = useState<number | null>(null)
   const [seeded, setSeeded] = useState(false)
   const [typosquats, setTyposquats] = useState<{ name: string; distance: number }[] | null>(null)
+  const [selectedService, setSelectedService] = useState<number | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
   const append = useCallback((level: LogLevel, text: string) => {
@@ -163,25 +180,40 @@ export function IncidentConsole() {
     setBusy("compromise")
     setRadius(null)
     setElapsed(null)
+    setSelectedService(null)
     const target = SCENARIO.compromise
     try {
       append("warn", `advisory: ${target.name}@${target.version} flagged compromised`)
+
+      // Two passes, because they answer two different questions. The first is
+      // the lockfile lookup: sub-second, and complete for every service whose
+      // lockfile records what it installed — that is the number an on-call
+      // engineer needs inside the incident. The second walks the resolved
+      // dependency graph upstream to catch services whose lockfile does not
+      // record the dependency at all, and takes as long as the closure is big.
       const startedAt = performance.now()
-      const result = await post("/api/compromise", target)
+      const fast = await post("/api/compromise", { ...target, skipClosure: true })
       const took = performance.now() - startedAt
 
-      setRadius(result.blastRadius)
+      setRadius(fast.blastRadius)
       setElapsed(Math.round(took))
 
-      const services: ExposedService[] = result.blastRadius.exposedServices
+      const radius: BlastRadius = fast.blastRadius
+      const services: ExposedService[] = radius.exposedServices
       append(
         services.length ? "err" : "ok",
-        `blast radius resolved in ${Math.round(took)}ms — ${services.length} service(s) exposed across ${result.blastRadius.pathCount} paths`
+        `blast radius resolved in ${Math.round(took)}ms — ${services.length} service(s) exposed across ${radius.pathCount} paths`
       )
-      if (result.blastRadius.truncated) {
+      if (radius.closure) {
+        append(
+          "ok",
+          `lockfile pass answered in ${radius.closure.directMs}ms — ${radius.closure.directHits} service(s) pin it directly`
+        )
+      }
+      if (radius.truncated) {
         append(
           "warn",
-          `traversal hit its ${result.blastRadius.pathCount}-path cap — there may be exposures beyond this set`
+          `traversal hit its ${radius.pathCount}-path cap — there may be exposures beyond this set`
         )
       }
       for (const service of services) {
@@ -189,6 +221,29 @@ export function IncidentConsole() {
       }
       if (!services.length) {
         append("ok", "no service reaches that version — seed the scenario first")
+      }
+
+      append("info", "confirming completeness — walking the resolved graph upstream…")
+      const full = await fetch(
+        `/api/blast-radius?ecosystem=${target.ecosystem}&name=${target.name}&version=${target.version}`
+      ).then((res) => res.json())
+
+      const complete: BlastRadius = full.radius
+      setRadius(complete)
+      const extra = complete.exposedServices.length - services.length
+      append(
+        extra > 0 ? "err" : "ok",
+        extra > 0
+          ? `${extra} further service(s) exposed through dependencies their lockfiles do not pin`
+          : `closure agrees: ${complete.exposedServices.length} exposed, nothing missed by the lockfile pass`
+      )
+      if (complete.closure) {
+        append(
+          "info",
+          `walked ${complete.closure.versionsReached} version(s), depth ${complete.closure.rounds}, ` +
+            `${complete.closure.queries} queries · lockfile pass ${complete.closure.directMs}ms, ` +
+            `closure ${complete.closure.closureMs}ms`
+        )
       }
     } catch (error) {
       append("err", (error as Error).message)
@@ -312,13 +367,37 @@ export function IncidentConsole() {
               </p>
             )}
 
+            {radius && radius.paths.length > 0 && (
+              <div className="mb-5">
+                <div className="mb-2 flex items-baseline justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-500">
+                    exposure graph
+                  </span>
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-neutral-400">
+                    {radius.mode === "exhaustive" ? "closure enumerated" : "sspaths sample"} · hover a node
+                  </span>
+                </div>
+                <BlastGraph
+                  paths={radius.paths}
+                  sourceId={radius.sourceId}
+                  highlightService={selectedService}
+                />
+              </div>
+            )}
+
             {radius?.exposedServices.map((service) => (
-              <div key={service.serviceId} className="mb-4 border-2 border-[#FC0001] bg-[#FFF6F6] p-4">
+              <div
+                key={service.serviceId}
+                onMouseEnter={() => setSelectedService(service.serviceId)}
+                onMouseLeave={() => setSelectedService(null)}
+                className="mb-4 border-2 border-[#FC0001] bg-[#FFF6F6] p-4"
+              >
                 <div className="flex items-baseline justify-between gap-4">
                   <span className="font-bold uppercase tracking-wider text-[#FC0001]">
                     {service.serviceName}
                   </span>
                   <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-neutral-500">
+                    {service.foundBy === "closure" ? "closure only · " : ""}
                     {service.hops} hops
                   </span>
                 </div>

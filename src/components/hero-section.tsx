@@ -9,14 +9,16 @@ const ease = [0.22, 1, 0.36, 1] as const
 
 type Particle = { id: number; x: number; y: number; size: number }
 
-// Measured on a local graph-node against the express@4.19.2 resolved subtree
-// from deps.dev. The live console below reproduces every one of these.
+// Measured on a local graph-node: the millisecond figures on the express@4.19.2
+// resolved subtree from deps.dev, the 42ms and 100K figures on the synthetic
+// load graph scripts/scale-check.mjs builds. The live console reproduces the
+// first two; the load test reproduces the rest.
 const STATS = [
-  { value: "49ms",  label: "Blast radius", sub: "Compromise to exposed set" },
-  { value: "21ms",  label: "Path explain", sub: "algo.SPpaths, one exposure" },
+  { value: "42ms",  label: "Blast radius", sub: "At 100K versions" },
+  { value: "1.7s",  label: "Path explain", sub: "algo.SPpaths, one exposure" },
   { value: "2",     label: "Ecosystems",  sub: "npm + PyPI" },
-  { value: "128",   label: "Resolved edges", sub: "One express subtree" },
-  { value: "8",     label: "Max hops",    sub: "Traversal bound" },
+  { value: "100K",  label: "Versions", sub: "Load-tested graph" },
+  { value: "1024",  label: "Path cap", sub: "Why we enumerate" },
   { value: "0",     label: "Vector calls", sub: "Graph-native only" },
 ]
 
