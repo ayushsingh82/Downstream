@@ -205,6 +205,24 @@ returning at all: `408 query_timeout: client_query_runtime exceeded query timeou
 after 120000 ms` (the node's `GRAPH_MAX_QUERY_RUNTIME_MS`). Same query, same
 data, id moved into the pattern: hundreds of milliseconds.
 
+## Write cost grows with total graph size
+
+There is no way to create a standalone vertex except the unlabeled
+`UNWIND $rows AS row MERGE (n {id: row.vertex}) SET n:Label, ...` form, and that
+form appears to cost more as the graph grows — the label that would narrow it is
+applied by the `SET`, after the `MERGE` has already matched.
+
+Measured with the same two-message write, same client, same code:
+
+| graph | write time |
+|---|---|
+| empty node | **93ms** |
+| node holding ~1.5M vertices from another workload | **6,258ms** |
+
+That is a 67x difference on a write whose own payload never changed. Two
+workloads sharing one graph do not just compete for CPU; the larger one taxes
+every write the smaller one makes. Give an ingest-heavy job its own graph-node.
+
 ## Concurrency
 
 The node is not the serial bottleneck it looks like from one connection.
@@ -239,10 +257,19 @@ returned as `408 query_timeout`.
 
 ## Deletes
 
-`MATCH (n {id: $x}) DELETE n`, `DETACH DELETE`, `REMOVE n:Label` and the
-`UNWIND $rows AS row MATCH (n {id: row.vertex}) DETACH DELETE n` batch form all
-parse and execute. That last one is what `scripts/scale-check.mjs --cleanup`
-uses to take its synthetic registry back out of the graph.
+`MATCH (n {id: $x}) DELETE n`, `DETACH DELETE`, `REMOVE n:Label`, the
+`UNWIND $rows AS row MATCH (n {id: row.vertex}) DETACH DELETE n` batch form, and
+edge deletion (`MATCH (a:A {id: $x})-[r:REL]->(b:B) DELETE r`) all parse and
+execute.
+
+**Vertex deletion does not scale.** Both `DELETE n` and `DETACH DELETE n` scan
+every edge in the *graph* — not the vertex's own edges — so above a million
+edges every vertex delete is rejected with
+`delete_vertex_scan_edges rejected by admission control`, however few vertices
+the statement names. Edge deletion has no such limit, so the only order that
+works is: delete the edges, which brings the graph back under the ceiling, then
+delete the vertices. `scripts/scale-check.mjs --cleanup` does exactly that, and
+says so plainly if the node still refuses.
 
 ## Consistency
 

@@ -54,7 +54,12 @@ for (let i = 2; i < process.argv.length; i++) {
   else if (arg === "--base") args.base = next()
   else if (arg === "--prefix") args.prefix = next()
   else if (arg === "--skip-write") args.skipWrite = true
-  else if (arg === "--cleanup") args.cleanup = true
+  else if (arg === "--cleanup") {
+    // Cleanup is a removal pass, not a build-then-remove: writing the graph
+    // again first would be minutes of pointless work.
+    args.cleanup = true
+    args.skipWrite = true
+  }
   else if (arg === "--closure") args.closure = true
   else {
     console.error(`Unknown argument: ${arg}`)
@@ -288,23 +293,81 @@ if (!args.skipWrite) {
 // write here, has to bind its target by id inside the pattern.
 if (args.cleanup) {
   const started = Date.now()
-  const ids = [
-    ...allVersions.map((v) => v.pkgId),
-    ...allVersions.map((v) => v.verId),
-  ]
   const resolvedAt = Date.UTC(2026, 7, 1)
+
+  // Edges first, and separately, because vertex deletion is the operation the
+  // node refuses at size. `DELETE n` and `DETACH DELETE n` both scan every edge
+  // in the graph — not the vertex's own edges — and trip
+  // `delete_vertex_scan_edges rejected by admission control: actual 1000001
+  // exceeds limit 1000000` on a graph this test itself creates. Deleting the
+  // synthetic edges first drops the graph back under that ceiling, after which
+  // the vertices can go too.
+  const edgePatterns = [
+    ["Package", "HAS_VERSION", "PackageVersion", allVersions.map((v) => v.pkgId)],
+    ["PackageVersion", "RESOLVES_TO", "PackageVersion", allVersions.map((v) => v.verId)],
+  ]
+  for (let i = 0; i < args.services; i++) {
+    edgePatterns.push(["Service", "RUNS", "Project", [stableId(`service:${args.prefix}-svc-${i}`)]])
+    edgePatterns.push([
+      "Project",
+      "HAS_LOCKFILE",
+      "Lockfile",
+      [stableId(`project:${args.prefix}-proj-${i}`)],
+    ])
+    edgePatterns.push([
+      "Lockfile",
+      "PINS",
+      "PackageVersion",
+      [stableId(`lockfile:${args.prefix}-proj-${i}:${resolvedAt}`)],
+    ])
+  }
+
+  let done = 0
+  const totalSources = edgePatterns.reduce((n, [, , , ids]) => n + ids.length, 0)
+  for (const [fromLabel, relType, toLabel, ids] of edgePatterns) {
+    for (let i = 0; i < ids.length; i += args.concurrency) {
+      await Promise.all(
+        ids
+          .slice(i, i + args.concurrency)
+          .map((id) =>
+            query(`MATCH (s:${fromLabel} {id: $id})-[r:${relType}]->(d:${toLabel}) DELETE r`, { id })
+          )
+      )
+      done += Math.min(args.concurrency, ids.length - i)
+      process.stdout.write(`\r  edges from ${done}/${totalSources} vertices   `)
+    }
+  }
+  process.stdout.write("\r" + " ".repeat(44) + "\r")
+  console.log(`removed      edges from ${totalSources} vertices`)
+
+  const ids = [...allVersions.map((v) => v.pkgId), ...allVersions.map((v) => v.verId)]
   for (let i = 0; i < args.services; i++) {
     ids.push(stableId(`service:${args.prefix}-svc-${i}`))
     ids.push(stableId(`project:${args.prefix}-proj-${i}`))
     ids.push(stableId(`lockfile:${args.prefix}-proj-${i}:${resolvedAt}`))
   }
 
-  console.log(`deleting ${ids.length} synthetic vertices…`)
-  await writeAll(
-    ids.map((id) => ({ vertex: id })),
-    (batch) => query(`UNWIND $rows AS row MATCH (n {id: row.vertex}) DETACH DELETE n`, { rows: batch })
-  )
-  console.log(`removed      ${ids.length} vertices in ${((Date.now() - started) / 1000).toFixed(1)}s`)
+  console.log(`deleting ${ids.length} vertices…`)
+  try {
+    await writeAll(
+      ids.map((id) => ({ vertex: id })),
+      (batch) =>
+        query(`UNWIND $rows AS row MATCH (n {id: row.vertex}) DETACH DELETE n`, { rows: batch })
+    )
+    console.log(`removed      ${ids.length} vertices in ${((Date.now() - started) / 1000).toFixed(1)}s`)
+  } catch (error) {
+    // Said plainly rather than thrown: the edges are gone, so nothing traverses
+    // into this data any more, but the vertices stay until the graph as a whole
+    // is under the scan limit.
+    console.error(`\nvertex deletion refused: ${error.message}`)
+    console.error(
+      `Edges are removed, so the synthetic graph is unreachable, but its vertices\n` +
+        `remain. Vertex deletion scans every edge in the graph — not just the\n` +
+        `vertex's own — so it only succeeds below the 1,000,000-edge limit. Re-run\n` +
+        `--cleanup once other workloads have shrunk, or start a fresh graph-node.`
+    )
+    process.exit(1)
+  }
   process.exit(0)
 }
 
