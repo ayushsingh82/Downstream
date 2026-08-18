@@ -2,9 +2,10 @@
 
 Tracks what's actually built vs. what plan.md describes. Updated as work lands.
 
-**Status: the backend is complete and verified end-to-end against a live HydraDB
-graph-node with real deps.dev data.** The remaining gaps are scale and presentation, not
-correctness.
+**Status: complete and verified end-to-end against a live HydraDB graph-node — with real
+deps.dev/PyPI/OSV data, at 100,000-version scale, and with a graph view in the console.**
+The blast-radius answer was rebuilt after load testing showed the original traversal was
+silently incomplete on any graph bigger than the demo.
 
 ## Verified live against a running graph-node
 
@@ -28,7 +29,44 @@ All of the following was executed, not inferred from documentation:
   than silently appearing to succeed.
 - **Four external API clients** exercised against the real services (deps.dev v3, npm
   registry, PyPI JSON, OSV.dev `querybatch`).
-- `npx tsc --noEmit` clean · `npm run build` clean, 8 routes registered.
+- **PyPI end-to-end** (the gap this file used to list): `requests@2.31.0` → 5 packages,
+  5 versions, 4 `RESOLVES_TO` edges, 3 maintainers; a `ml-scoring` service registered
+  against it; compromising `urllib3@2.7.0` returns the exposed service in **42ms**.
+- `npx tsc --noEmit` clean · `npm run lint` clean.
+
+## What load testing changed
+
+`scripts/scale-check.mjs` builds a registry-shaped graph (layered DAG, hub packages with
+heavy fan-in, services whose lockfiles pin their full resolved subtree) and runs the
+incident query on it. Doing that surfaced three things the demo graph could not:
+
+1. **`algo.SSpaths` caps at 1024 paths regardless of `pathCount`, and says nothing about
+   it.** pathCount 100 → 100 paths; 2000 → 1024; 5000 → 1024. Anything over 100,000 is
+   rejected outright, which reads as though smaller values are honoured. The original blast
+   radius asked for 500 and reported `truncated` when it got exactly 500 — correct as far as
+   it went, but the real ceiling is 1024, and on a real graph the traversal spends that
+   budget on prefixes of the same few chains long before reaching every dependent.
+2. **`WHERE n.id = $x` does not use the id index; `{id: $x}` in the pattern does.** Same
+   query, same rows: 26.6s versus 2.3s for a one-hop reverse lookup, 41.6s versus 3.0s for
+   a chained service query. Past a certain size the scanning form stops returning at all —
+   `408 query_timeout ... after 120000 ms`.
+3. **Sustained ingestion trips a storage-layer failure.** At ~85,000 vertices the node's
+   SlateDB manifest writer panicked (`InvalidTransactionalObjectState`), in-flight
+   statements returned a bare `500 internal query execution error`, and the node then
+   promoted a new writer and carried on. The client now retries 5xx and dropped connections
+   with backoff, which is safe because every statement it issues is idempotent by
+   construction.
+
+So the answer was restructured into two queries that are honest about what they cost:
+
+- **Lockfile lookup** — one `PINS`/`HAS_LOCKFILE`/`RUNS` pattern from the compromised
+  version. **42ms on a 100,000-version graph.** Complete for every service whose lockfile
+  records what it installed, which is what a lockfile is for.
+- **Upstream closure** — breadth-first enumeration using `algo.SSpaths` with
+  `relDirection: 'incoming'` as the expansion primitive, treating exactly 1024 returned
+  paths as truncated and re-expanding a level at a time. Catches services whose lockfile
+  does not record the dependency. Costs minutes on a hub package, and the console runs it as
+  a second pass that reports whether it found anything the first pass missed.
 
 ## Done
 
@@ -57,29 +95,42 @@ All of the following was executed, not inferred from documentation:
 - [x] `HYDRADB-NOTES.md` — the wire contract as verified, including the constraints the
       published docs don't state
 - [x] plan.md reconciled, with a divergences section rather than silent edits
+- [x] `scripts/scale-check.mjs` — the load test, with `--cleanup` to take its synthetic
+      registry back out of the graph and `--closure` to include the full upstream walk
+- [x] `GET /api/advisories` — scans the graph's versions against OSV.dev `querybatch` and
+      returns the ones carrying a real advisory, so a compromise can be seeded from a public
+      feed rather than a hardcoded demo target
+- [x] **Graph visualisation** (`src/components/blast-graph.tsx`) — the exposure chains drawn
+      as an SVG laid out by hop distance from the compromise, with hover isolating one
+      chain. Layout comes from the paths themselves rather than a force simulation, because
+      distance from the left edge is the thing worth reading
+- [x] **PyPI maintainer parsing fixed.** PEP 621 moved identities into
+      `maintainer_email`/`author_email` as RFC-5322 address lists and left the bare-name
+      fields null, so the old code returned zero maintainers for `requests`, `urllib3` and
+      most of the ecosystem — silently disabling the shared-maintainer pivot for all of PyPI
 - [x] Landing-page metrics replaced with measured figures; the fabricated "500K+ versions",
       "48ms p50", and "99.9% uptime SLA" claims are gone, and `algo.MSpaths` references
       corrected to `SSpaths`
 
 ## Not done yet
 
-- [ ] **Scale.** One 71-version subtree is ingested. The plan targets hundreds of thousands
-      of versioned nodes, and no load test has run. This is the largest gap: the traversal
-      is fast here, but 128 edges does not prove anything about 128,000.
-- [ ] **The traversal hits its 500-path cap on the demo graph.** Surfaced honestly in the
-      UI and the API response (`truncated: true`), but it means the exposed-service set is
-      complete for the paths returned rather than proven exhaustive. Needs either a higher
-      cap, or a two-stage query that enumerates reachable services before pathing to them.
-- [ ] **No graph visualisation.** The console shows hop chains as text. plan.md called for
-      a force-directed graph view with path highlighting.
-- [ ] **OSV.dev is not wired into the demo flow.** The client is built and verified, but the
-      console's compromise trigger is manual rather than seeded from a real advisory.
+- [ ] **The upstream closure is minutes, not milliseconds, on a hub package.** Enumerating
+      it is O(dependent versions), and the graph-node serves cold vertices from the object
+      store at roughly 100ms each, so a closure over 2,269 versions takes ~3 minutes. That is
+      inside the incident SLA the plan targets and nowhere near interactive. A real
+      deployment would precompute and cache the closure per package rather than walking it
+      per incident; nothing here does that yet.
 - [ ] **Typosquat corpus is caller-supplied.** A real deployment needs a background job
       populating it from the broader registry.
-- [ ] **PyPI path is untested end-to-end.** The client is verified but no PyPI subtree has
-      been ingested into the graph.
 - [ ] **GitHub API integration** (maintainer identity resolution, org membership) is listed
       in plan.md and not started.
+- [ ] **The advisory scan reads an arbitrary slice of the graph.** `LIMIT` with no ordering,
+      because this Cypher subset has no way to filter package names by pattern — so on a
+      graph that also holds load-test data, the scan can spend its OSV budget on synthetic
+      names. `scripts/scale-check.mjs --cleanup` removes those, but the ordering problem is
+      real for any mixed graph.
+- [ ] **Nothing re-checks a closure after the graph changes.** A service whose lockfile is
+      updated after an incident is not re-evaluated; there is no subscription or diff.
 - [ ] Demo video not recorded.
 
 ## Reproduce the verification

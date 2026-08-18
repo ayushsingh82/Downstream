@@ -114,5 +114,33 @@ Recorded rather than quietly edited, since the plan is part of the submission.
    original schema stopped at `Project`, so the plan's headline query had no target to reach.
 5. **Property indexes** are not created explicitly; the plan listed them but HydraDB's
    Cypher subset exposes no `CREATE INDEX`, and id-keyed lookups are the fast path already.
-6. **Load-test at "hundreds of thousands of versioned nodes" has not been run.** One real
-   71-version subtree is ingested and verified. This is the largest outstanding gap.
+6. **The load test happened, and it changed the design.** `scripts/scale-check.mjs` builds
+   a registry-shaped graph — 84,163 versions, 332,985 resolved edges, 200 services whose
+   lockfiles pin their full resolved subtrees — and running the incident query on it showed
+   the original traversal was quietly wrong at that size. Three findings, all measured:
+
+   - **`algo.SSpaths` returns at most 1024 paths regardless of `pathCount`**, and marks
+     nothing as truncated. The plan treated one path call as the answer. It cannot be.
+   - **`WHERE n.id = $x` does not use the id index; `{id: $x}` inside the pattern does.**
+     26.6s versus 2.3s for the same one-hop reverse lookup, and past a certain size the
+     scanning form exceeds the node's 120s query ceiling and returns nothing at all.
+   - **Sustained ingestion trips a storage-layer panic.** At ~85,000 vertices SlateDB's
+     manifest writer fails with `InvalidTransactionalObjectState`, in-flight statements
+     return a bare 500, and the node promotes a new writer and continues. The client now
+     retries 5xx with backoff, which is safe because every statement it issues is
+     idempotent by construction.
+
+7. **The blast radius is two queries, not one.** A lockfile records the whole resolved
+   tree, so "which services have this installed" is a single `PINS`/`HAS_LOCKFILE`/`RUNS`
+   pattern — 42ms on the 100K-version graph, and that is the number an on-call engineer
+   needs. Completeness is a second pass: a breadth-first upstream enumeration that uses
+   `algo.SSpaths` with `relDirection: 'incoming'` as its expansion primitive and treats
+   exactly 1024 returned paths as truncated. It costs minutes on a hub package, and it
+   exists to catch services whose lockfile does not record the dependency at all.
+8. **`relDirection: 'incoming'`, not `'both'`.** Both directions also finds dependents, but
+   walks back down each one's own dependencies, fanning out over the whole graph — at
+   `maxLen: 6` it exceeded the 64MB cursor buffer. Incoming-only follows exactly the
+   direction exposure travels.
+9. **OSV.dev is wired into the flow.** `GET /api/advisories` scans the versions in the graph
+   against `querybatch` and returns the ones carrying a real advisory, so a compromise can
+   be seeded from a public feed rather than chosen by hand.

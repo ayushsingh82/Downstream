@@ -8,8 +8,11 @@ Radius keeps the **resolved** npm/PyPI dependency graph in HydraDB alongside a m
 internal services and the lockfiles they ship. Marking a version compromised resolves the
 reverse-dependency closure out to every affected service in one native traversal.
 
-Measured on a local graph-node: **compromising a transitive dependency identifies both
-exposed services in 47–49ms**, and `algo.SPpaths` explains any single exposure in ~21ms.
+Measured on a local graph-node: **compromising a transitive dependency identifies the
+exposed services in 42–49ms**, and `algo.SPpaths` explains any single exposure in ~1.7s on
+a 100,000-version graph (21ms on the demo one). The incident answer and the completeness
+proof behind it are two different queries, and this app runs both — see
+**Two answers, not one** below.
 
 ## Why this needs a graph database
 
@@ -20,12 +23,38 @@ The demo compromises `cookie@0.6.0` — a *transitive* dependency of `express@4.
 Neither demo service names `cookie` in its own manifest. The exposure exists only in the
 resolved graph, which is exactly the case `npm audit`-style declared-range tooling misses.
 
+## Two answers, not one
+
+A compromise raises two questions with very different costs, and collapsing them into one
+number would misrepresent both.
+
+1. **"Which of our services has this installed?"** — one query. A lockfile records the whole
+   resolved tree, so a service that installed the compromised version pins it by name
+   whether or not any manifest mentions it:
+   `MATCH (v:PackageVersion {id})<-[:PINS]-(:Lockfile)<-[:HAS_LOCKFILE]-(:Project)<-[:RUNS]-(s:Service)`.
+   **42ms** on a 100,000-version graph. This is the number the on-call engineer needs.
+
+2. **"Is that all of them?"** — a full upstream closure over `RESOLVES_TO`, which catches
+   services whose lockfile does not record the dependency (ingested from a manifest, or
+   stale). Cost is proportional to how many versions depend on the compromised one:
+   **minutes**, not milliseconds, on a hub package. The console runs it as a second pass and
+   reports whether it found anything the first pass missed.
+
+The reason the second one cannot be a single `algo.SSpaths` call is measured and blunt:
+**`algo.SSpaths` returns at most 1024 paths regardless of the `pathCount` you ask for**, and
+nothing in the response says it truncated. On the demo graph that cap is invisible; on a
+real one it turns "these are the affected services" into "these are some of them." So the
+closure is enumerated breadth-first, using the path procedure as the expansion primitive and
+treating any result of exactly 1024 as truncated. Details in `HYDRADB-NOTES.md`.
+
 ### What this loses without HydraDB
 
-- **`algo.SSpaths` with `relDirection: 'both'`** walks four different relationship types in
-  one call, against the stored edge direction. Without a native path procedure this becomes
-  a client-side BFS: one round trip per frontier node per hop, which at incident time is the
-  difference between an answer and a spreadsheet.
+- **`algo.SSpaths` with `relDirection: 'incoming'`** walks four different relationship types
+  in one call, strictly against the stored edge direction — which is what makes a *reverse*
+  dependency closure expressible at all. Measured against the alternatives on the same
+  vertex: the path procedure expands one hop in 86ms, the equivalent pattern match with the
+  id bound inside the pattern takes 2.3s, and the same match with the id in a `WHERE` clause
+  takes 27s.
 - **`UNWIND` batch writes** load 128 resolved edges in a handful of statements instead of
   one round trip per edge.
 - **Bookmark-threaded causal reads** let the compromise write hand its durable sequence to
@@ -119,6 +148,7 @@ Readiness check: `curl -sf localhost:9090/readyz`.
 | `POST /api/compromise` | Flag a version, then bookmark-read its blast radius back |
 | `GET /api/blast-radius` | Blast radius + shared maintainers + live-window lockfiles + optional path explanation |
 | `GET /api/typosquat` | Precomputed `NAME_SIMILAR_TO` neighbours |
+| `GET /api/advisories` | Scan the graph's versions against OSV.dev and return the ones with real advisories |
 
 ```bash
 curl -X POST localhost:3000/api/ingest -H 'content-type: application/json' \
@@ -131,6 +161,23 @@ curl -X POST localhost:3000/api/service -H 'content-type: application/json' \
 curl -X POST localhost:3000/api/compromise -H 'content-type: application/json' \
   -d '{"ecosystem":"npm","name":"cookie","version":"0.6.0"}'
 ```
+
+## Load test
+
+`scripts/scale-check.mjs` builds a registry-shaped graph — layered dependency DAG, a few
+hub packages with heavy fan-in, services whose lockfiles pin their full resolved subtree —
+and then runs the incident query on it.
+
+```bash
+node scripts/scale-check.mjs --versions 100000 --services 200   # build and measure
+node scripts/scale-check.mjs --versions 100000 --skip-write     # measure only
+node scripts/scale-check.mjs --versions 100000 --cleanup        # remove what it wrote
+node scripts/scale-check.mjs --versions 3000 --closure          # include the full upstream walk
+```
+
+It writes through the same two `UNWIND` forms the app uses, and prints the lockfile answer,
+the `sspaths` answer and (with `--closure`) the enumerated one side by side, so the path cap
+is demonstrated rather than asserted.
 
 ## HydraDB notes
 
