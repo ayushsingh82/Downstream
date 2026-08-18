@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import {
-  getBlastRadius,
+  blastRadius,
+  type BlastRadiusMode,
   getSharedMaintainerPackages,
   getLiveWindowLockfiles,
   explainExposure,
@@ -20,10 +21,11 @@ export async function GET(req: NextRequest) {
   const windowStart = Number(params.get("windowStart") ?? 0)
   const windowEnd = Number(params.get("windowEnd") ?? Date.now())
   const explainProject = params.get("explainProject")
+  const mode = (params.get("mode") as BlastRadiusMode | null) ?? undefined
 
   const startedAt = Date.now()
   const [radius, sharedMaintainerPackages, liveWindowLockfiles, explanation] = await Promise.all([
-    getBlastRadius(ecosystem, name, version),
+    blastRadius(ecosystem, name, version, { mode }),
     getSharedMaintainerPackages(ecosystem, name),
     getLiveWindowLockfiles(ecosystem, name, version, windowStart, windowEnd),
     explainProject ? explainExposure(ecosystem, name, version, explainProject) : Promise.resolve(null),

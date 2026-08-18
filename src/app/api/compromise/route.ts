@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { markCompromised } from "@/lib/ingest"
-import { getBlastRadius } from "@/lib/blastradius"
+import { blastRadius, type BlastRadiusMode } from "@/lib/blastradius"
 import type { Ecosystem } from "@/lib/depsdev"
 
 interface CompromiseRequestBody {
@@ -8,6 +8,12 @@ interface CompromiseRequestBody {
   name: string
   version: string
   compromisedAt?: number
+  /** "exhaustive" (default, no path cap) or "sspaths" (one native call). */
+  mode?: BlastRadiusMode
+  /** Levels per expansion call in exhaustive mode; 1 is fastest (see blastradius.ts). */
+  expandDepth?: number
+  /** Skip the upstream closure and return the sub-second lockfile answer only. */
+  skipClosure?: boolean
 }
 
 export async function POST(req: NextRequest) {
@@ -30,8 +36,11 @@ export async function POST(req: NextRequest) {
   // The write's bookmark is threaded into the read, so a `causal` read is
   // guaranteed to observe the compromise flag we just set without paying for
   // `strong` consistency on the traversal itself — which is the expensive half.
-  const blastRadius = await getBlastRadius(body.ecosystem, body.name, body.version, {
+  const radius = await blastRadius(body.ecosystem, body.name, body.version, {
     bookmark: marked.bookmark,
+    mode: body.mode,
+    expandDepth: body.expandDepth,
+    skipClosure: body.skipClosure,
   })
 
   return NextResponse.json({
@@ -39,6 +48,6 @@ export async function POST(req: NextRequest) {
     compromisedAt,
     elapsedMs: Date.now() - startedAt,
     versionId: marked.versionId,
-    blastRadius,
+    blastRadius: radius,
   })
 }
