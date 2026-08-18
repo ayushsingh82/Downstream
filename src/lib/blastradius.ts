@@ -636,7 +636,7 @@ export async function getExhaustiveBlastRadius(
   // to how many versions depend on the compromised one.
   const closureStart = Date.now()
 
-  while (skipClosure === false && frontier.length > 0 && stats.rounds < maxDepth) {
+  while (!skipClosure && frontier.length > 0 && stats.rounds < maxDepth) {
     // A Service is the top of the chain — nothing points at it, so expanding one
     // is a guaranteed-empty round trip.
     const expandable = frontier.filter((node) => node.label !== "Service")
