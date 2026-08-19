@@ -560,7 +560,7 @@ export async function getExhaustiveBlastRadius(
     maxDepth = 24,
     expandDepth = DEFAULT_EXPAND_DEPTH,
     skipClosure = false,
-    chainLimit = 25,
+    chainLimit = 10,
     consistency = "causal",
     bookmark,
   } = options
@@ -679,10 +679,12 @@ export async function getExhaustiveBlastRadius(
     .map((node) => ({ projectId: node.id, projectName: node.name, hops: node.distance }))
     .sort((a, b) => a.hops - b.hops)
 
-  // The chain to show an on-call engineer, computed by the database. Capped:
-  // one shortest-path call per service is bounded work, but a thousand exposed
-  // services is a thousand of them, and nobody reads chain nine hundred. The
-  // exposed set itself is never capped — only the drawn explanation.
+  // The chain to show an on-call engineer, computed by the database. Capped,
+  // and the cap matters: one shortest-path call per service costs ~700ms on a
+  // 100K-version graph, so 140 exposed services would be a hundred seconds of
+  // explanation on top of a 124ms answer. Nobody reads chain ninety. The
+  // exposed set itself is never capped — only the drawing of it — and
+  // chainLimit: 0 returns the set alone.
   const paths: GraphPath[] = []
   const withChains = services.slice(0, chainLimit)
   const withoutChains = services.slice(chainLimit).map((service) => ({
@@ -757,16 +759,18 @@ export async function blastRadius(
     pathCount?: number
     expandDepth?: number
     skipClosure?: boolean
+    chainLimit?: number
     consistency?: Consistency
     bookmark?: string
   } = {}
 ): Promise<AnyBlastRadius> {
-  const { mode = "exhaustive", expandDepth, skipClosure, ...rest } = options
+  const { mode = "exhaustive", expandDepth, skipClosure, chainLimit, ...rest } = options
   return mode === "sspaths"
     ? getBlastRadius(ecosystem, name, version, rest)
     : getExhaustiveBlastRadius(ecosystem, name, version, {
         expandDepth,
         skipClosure,
+        chainLimit,
         consistency: rest.consistency,
         bookmark: rest.bookmark,
       })

@@ -8,11 +8,12 @@ Radius keeps the **resolved** npm/PyPI dependency graph in HydraDB alongside a m
 internal services and the lockfiles they ship. Marking a version compromised resolves the
 reverse-dependency closure out to every affected service in one native traversal.
 
-Measured on a local graph-node: **compromising a transitive dependency identifies the
-exposed services in 42–49ms**, and `algo.SPpaths` explains any single exposure in ~1.7s on
-a 100,000-version graph (21ms on the demo one). The incident answer and the completeness
-proof behind it are two different queries, and this app runs both — see
-**Two answers, not one** below.
+Measured on a local graph-node holding **84,163 package versions, 332,985 resolved
+dependency edges and 200 services**: compromising a package the whole graph sits on top of
+returns **140 exposed services in 110ms**. On the same graph the obvious one-call version
+of this query — `algo.SSpaths` across the whole closure — does not merely truncate, it is
+**refused**: `native_path_edges rejected by admission control: actual 1000034 exceeds limit
+1000000`. See **Two answers, not one** below.
 
 ## Why this needs a graph database
 
@@ -32,7 +33,10 @@ number would misrepresent both.
    resolved tree, so a service that installed the compromised version pins it by name
    whether or not any manifest mentions it:
    `MATCH (v:PackageVersion {id})<-[:PINS]-(:Lockfile)<-[:HAS_LOCKFILE]-(:Project)<-[:RUNS]-(s:Service)`.
-   **42ms** on a 100,000-version graph. This is the number the on-call engineer needs.
+   **110ms for 140 exposed services** on the 84K-version graph. This is the number the
+   on-call engineer needs. Drawing the chain for each one costs far more than finding them
+   — `algo.SPpaths` runs ~700ms per service at this size — so the explanations are capped
+   (`chainLimit`, default 10) while the exposed set never is.
 
 2. **"Is that all of them?"** — a full upstream closure over `RESOLVES_TO`, which catches
    services whose lockfile does not record the dependency (ingested from a manifest, or
@@ -40,12 +44,19 @@ number would misrepresent both.
    **minutes**, not milliseconds, on a hub package. The console runs it as a second pass and
    reports whether it found anything the first pass missed.
 
-The reason the second one cannot be a single `algo.SSpaths` call is measured and blunt:
-**`algo.SSpaths` returns at most 1024 paths regardless of the `pathCount` you ask for**, and
-nothing in the response says it truncated. On the demo graph that cap is invisible; on a
-real one it turns "these are the affected services" into "these are some of them." So the
-closure is enumerated breadth-first, using the path procedure as the expansion primitive and
-treating any result of exactly 1024 as truncated. Details in `HYDRADB-NOTES.md`.
+The reason the second one cannot be a single `algo.SSpaths` call is measured and blunt, and
+it has two parts:
+
+- **`algo.SSpaths` returns at most 1024 paths regardless of the `pathCount` you ask for**,
+  and nothing in the response says it truncated. On the demo graph that cap is invisible; on
+  a real one it turns "these are the affected services" into "these are some of them."
+- Past a certain size it does not return at all. On the 84K-version graph the whole-closure
+  call is rejected outright: `native_path_edges rejected by admission control: actual
+  1000034 exceeds limit 1000000`.
+
+So the closure is enumerated breadth-first, using the path procedure as a *one-hop*
+expansion primitive with `relDirection: 'incoming'` — which stays far under both limits —
+and treating any result of exactly 1024 as truncated. Details in `HYDRADB-NOTES.md`.
 
 ### What this loses without HydraDB
 

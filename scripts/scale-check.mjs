@@ -410,7 +410,12 @@ async function measure(label, options) {
 // The lockfile lookup is the incident answer; the closure is the completeness
 // check behind it. They are timed separately because they cost three orders of
 // magnitude apart, and quoting only one of them would be a half-truth either way.
-const direct = await measure("lockfile lookup", { skipClosure: true })
+// Two lockfile measurements: the answer alone, and the answer with the chains
+// drawn. On a graph this size the chains cost more than the answer by two orders
+// of magnitude, and quoting only the combined figure would hide which half is
+// which.
+const answerOnly = await measure("exposed set", { skipClosure: true, chainLimit: 0 })
+const direct = await measure("set + 10 chains", { skipClosure: true })
 const sspaths = await measure("sspaths", { mode: "sspaths" })
 const exhaustive = args.closure ? await measure("full closure", {}) : null
 
@@ -418,7 +423,7 @@ if (!args.closure) {
   console.log(`\n(--closure re-runs with the upstream walk; on this graph that is minutes, not ms)`)
 }
 
-const complete = exhaustive ?? direct
+const complete = exhaustive ?? answerOnly ?? direct
 if (complete && sspaths) {
   const missed = complete.services - sspaths.services
   console.log()

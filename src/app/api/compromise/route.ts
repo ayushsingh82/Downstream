@@ -14,6 +14,8 @@ interface CompromiseRequestBody {
   expandDepth?: number
   /** Skip the upstream closure and return the sub-second lockfile answer only. */
   skipClosure?: boolean
+  /** How many exposed services get a drawn chain (default 10; 0 for none). */
+  chainLimit?: number
 }
 
 export async function POST(req: NextRequest) {
@@ -41,6 +43,7 @@ export async function POST(req: NextRequest) {
     mode: body.mode,
     expandDepth: body.expandDepth,
     skipClosure: body.skipClosure,
+    chainLimit: body.chainLimit,
   })
 
   return NextResponse.json({

@@ -38,7 +38,12 @@ All of the following was executed, not inferred from documentation:
 
 `scripts/scale-check.mjs` builds a registry-shaped graph (layered DAG, hub packages with
 heavy fan-in, services whose lockfiles pin their full resolved subtree) and runs the
-incident query on it. Doing that surfaced three things the demo graph could not:
+incident query on it. The graph it built and this project now answers against: **84,163
+package versions, 332,985 `RESOLVES_TO` edges, 200 services, ~944,000 `PINS` edges.**
+Compromising the deepest hub returns **140 exposed services in 110ms**; drawing 10 of their
+chains adds 5.7s, which is why the chain count is capped and the exposed set is not.
+
+Doing that surfaced four things the demo graph could not:
 
 1. **`algo.SSpaths` caps at 1024 paths regardless of `pathCount`, and says nothing about
    it.** pathCount 100 → 100 paths; 2000 → 1024; 5000 → 1024. Anything over 100,000 is
@@ -46,11 +51,16 @@ incident query on it. Doing that surfaced three things the demo graph could not:
    radius asked for 500 and reported `truncated` when it got exactly 500 — correct as far as
    it went, but the real ceiling is 1024, and on a real graph the traversal spends that
    budget on prefixes of the same few chains long before reaching every dependent.
-2. **`WHERE n.id = $x` does not use the id index; `{id: $x}` in the pattern does.** Same
+2. **The one-call traversal is refused outright at size, not merely truncated.** On this
+   graph `algo.SSpaths` across the whole closure returns `native_path_edges rejected by
+   admission control: actual 1000034 exceeds limit 1000000`. A path procedure may touch a
+   million edges and no more, so "one native call answers the blast radius" is not a design
+   that survives a real registry — the closure has to be walked a hop at a time.
+3. **`WHERE n.id = $x` does not use the id index; `{id: $x}` in the pattern does.** Same
    query, same rows: 26.6s versus 2.3s for a one-hop reverse lookup, 41.6s versus 3.0s for
    a chained service query. Past a certain size the scanning form stops returning at all —
    `408 query_timeout ... after 120000 ms`.
-3. **Sustained ingestion trips a storage-layer failure.** At ~85,000 vertices the node's
+4. **Sustained ingestion trips a storage-layer failure.** At ~85,000 vertices the node's
    SlateDB manifest writer panicked (`InvalidTransactionalObjectState`), in-flight
    statements returned a bare `500 internal query execution error`, and the node then
    promoted a new writer and carried on. The client now retries 5xx and dropped connections
