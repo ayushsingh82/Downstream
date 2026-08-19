@@ -4,7 +4,10 @@ import { Radar } from "lucide-react"
 import { motion } from "framer-motion"
 import Link from "next/link"
 
-const NAV_LINKS = ["Docs", "Pricing", "Benchmarks", "GitHub"]
+const NAV_LINKS = [
+  { label: "Docs", href: "/docs" },
+  { label: "Benchmarks", href: "#benchmarks" },
+]
 
 export function Navbar() {
   return (
@@ -38,11 +41,11 @@ export function Navbar() {
           >
             {NAV_LINKS.map((link) => (
               <Link
-                key={link}
-                href="#"
+                key={link.label}
+                href={link.href}
                 className="text-[10px] font-mono tracking-widest uppercase text-foreground/50 hover:text-foreground transition-colors"
               >
-                {link}
+                {link.label}
               </Link>
             ))}
           </motion.div>
@@ -55,16 +58,10 @@ export function Navbar() {
             className="flex items-center gap-3"
           >
             <Link
-              href="/login"
-              className="hidden sm:block text-[10px] font-mono tracking-widest uppercase text-foreground/50 hover:text-foreground transition-colors"
-            >
-              Log in
-            </Link>
-            <Link
-              href="/signup"
+              href="/dashboard"
               className="text-[10px] font-mono tracking-widest uppercase px-5 py-2.5 bg-[#FC0001] text-white hover:opacity-80 transition-opacity font-bold"
             >
-              Start Free
+              Dashboard
             </Link>
           </motion.div>
         </div>
