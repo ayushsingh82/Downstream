@@ -53,9 +53,9 @@ export function MetricsCard() {
         <span className="inline-block h-2 w-2 rounded-full bg-[#FC0001]" />
       </div>
       <div className="flex-1 flex flex-col justify-center gap-6 p-6">
-        <ScrambleNumber target="49ms" label="Blast Radius Traversal" delay={500} />
-        <ScrambleNumber target="21ms" label="Path Explanation" delay={800} />
-        <ScrambleNumber target="128" label="Resolved Edges Ingested" delay={1100} />
+        <ScrambleNumber target="110ms" label="Exposed-Set Query" delay={500} />
+        <ScrambleNumber target="700ms" label="Path Explanation" delay={800} />
+        <ScrambleNumber target="333K" label="Resolved Edges Ingested" delay={1100} />
         <ScrambleNumber target="2" label="Ecosystems Covered" delay={1400} />
       </div>
     </div>

@@ -23,8 +23,10 @@ const STATS = [
 ]
 
 const TECH_TAGS = [
-  "npm", "PyPI", "GitHub Actions", "Dependabot", "Renovate",
-  "GitLab CI", "CircleCI", "Snyk", "Socket", "OSV.dev",
+  // Only what this actually talks to. The template listed Dependabot,
+  // Renovate, Snyk, Socket and three CI systems; none of them are integrated,
+  // and a logo wall of things you do not use is a lie told in a nice font.
+  "npm registry", "PyPI", "deps.dev", "OSV.dev", "GitHub API",
 ]
 
 const FEATURES = [

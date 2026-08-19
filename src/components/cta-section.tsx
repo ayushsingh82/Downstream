@@ -28,8 +28,9 @@ export function CtaSection() {
             <span className="text-white/40">Never blind.</span>
           </h2>
           <p className="text-sm font-mono text-white/60 max-w-lg mx-auto mb-10 leading-relaxed">
-            Index your first dependency subtree in under two minutes. Free tier,
-            no credit card. Know your blast radius before the worm does.
+            Ingest your first dependency subtree in under two minutes, against a
+            graph-node running on your own machine. Know your blast radius before
+            the worm does.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-16">

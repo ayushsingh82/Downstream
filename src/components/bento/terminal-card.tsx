@@ -13,8 +13,8 @@ const LOG_LINES = [
   "> Exposed services found: 2",
   "> Lockfiles resolved during live window: 2",
   "> Typosquat candidates: 3 (distance <= 2)",
-  "> Query latency: 49ms",
-  "> algo.SPpaths explain: 3 hops, weight 3 [21ms]",
+  "> Exposed-set query: 110ms",
+  "> algo.SPpaths explain: 3 hops, weight 3 [700ms]",
   "> Alert dispatched: SECURITY_CHANNEL",
   "> --------- SCAN_CYCLE_COMPLETE ---------",
 ]

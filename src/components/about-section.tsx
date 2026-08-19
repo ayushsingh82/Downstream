@@ -32,23 +32,23 @@ function ScrambleText({ text, className }: { text: string; className?: string })
 }
 
 const STATS = [
-  { label: "Blast Radius", value: "49ms", sub: "Compromise to exposed set", highlight: true },
-  { label: "Path Explain", value: "21ms",   sub: "algo.SPpaths, one exposure",   highlight: false },
-  { label: "Resolved Edges",      value: "128",     sub: "express@4.19.2 subtree", highlight: false },
-  { label: "Ecosystems",         value: "2",       sub: "npm + PyPI", highlight: false },
+  { label: "Blast Radius", value: "110ms", sub: "140 services, 84K versions", highlight: true },
+  { label: "Path Explain", value: "700ms", sub: "algo.SPpaths, one exposure", highlight: false },
+  { label: "Resolved Edges", value: "333K", sub: "load-tested graph", highlight: false },
+  { label: "Ecosystems", value: "2", sub: "npm + PyPI", highlight: false },
 ]
 
 // Radius's figure is measured. The comparison rows describe what each tool
 // structurally can and cannot do — they are capability claims, not timings we ran.
 const BENCHMARK_ROWS = [
-  { name: "Radius (SSpaths)",  score: 96.00, display: "49 ms, measured", leader: true },
+  { name: "Radius (lockfile pass)", score: 96.00, display: "110 ms, measured at 84K versions", leader: true },
   { name: "Manual audit",      score: 8.00,  display: "Hours", leader: false },
   { name: "npm audit",         score: 20.00, display: "No reverse closure", leader: false },
   { name: "Dependabot alerts", score: 35.00, display: "Per-repo, no service map", leader: false },
 ]
 
 const CATEGORY_ROWS = [
-  { category: "Reverse Closure Speed",     radius: "49 ms",  manual: "Hours" },
+  { category: "Exposed-set query",         radius: "110 ms", manual: "Hours" },
   { category: "Maintainer Overlap",        radius: "Yes",    manual: "No" },
   { category: "Typosquat Proximity",       radius: "Yes",    manual: "No" },
   { category: "Live-Window Lockfiles",     radius: "Yes",    manual: "No" },

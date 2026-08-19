@@ -18,7 +18,7 @@ const STEPS = [
   {
     num: "03",
     title: "Trace Blast Radius",
-    desc: "algo.SSpaths resolves the reverse-dependency closure from the compromised version in one native call — not a client-side fan-out per target.",
+    desc: "One pattern query answers who has it installed, because a lockfile records the whole resolved tree. A second pass then walks the graph upstream with algo.SSpaths to catch services whose lockfile does not record it — the fast answer, then the proof it was complete.",
   },
   {
     num: "04",

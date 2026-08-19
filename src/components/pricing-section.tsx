@@ -88,8 +88,10 @@ export function PricingSection() {
           Simple Coverage Pricing
         </h2>
         <p className="text-sm font-mono text-muted-foreground max-w-md mx-auto">
-          No per-seat fees. No scan limits. Pay for how much of your dependency
-          surface you actually track.
+          <span className="font-bold text-foreground">Illustrative.</span> Nothing here is
+          for sale — there is no billing, no account system and no hosted service. This is
+          a hackathon build; the tiers sketch how the graph would be metered if it were a
+          product, and every capability listed is one the code actually has.
         </p>
       </motion.div>
 

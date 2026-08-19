@@ -9,7 +9,7 @@ const CHANNELS = [
   { name: "PYPI_REGISTRY", status: "WIRED", latency: "/pypi/json" },
   { name: "DEPS_DEV", status: "WIRED", latency: "v3 :dependencies" },
   { name: "OSV_DB", status: "WIRED", latency: "v1/querybatch" },
-  { name: "GITHUB_API", status: "PLANNED", latency: "identity resolve" },
+  { name: "GITHUB_API", status: "WIRED", latency: "identity resolve" },
 ]
 
 export function StatusCard() {
@@ -45,7 +45,7 @@ export function StatusCard() {
         <div className="mt-auto pt-4">
           <div className="flex items-center justify-between mb-1">
             <span className="text-[9px] tracking-[0.15em] uppercase text-muted-foreground">Resolved-Edge Coverage</span>
-            <span className="text-[9px] font-mono text-foreground">128 edges</span>
+            <span className="text-[9px] font-mono text-foreground">333K edges</span>
           </div>
           <div className="h-2 w-full border border-foreground">
             <div className="h-full bg-foreground" style={{ width: "99.9%" }} />
