@@ -6,8 +6,28 @@ import Link from "next/link"
 
 const ease = [0.22, 1, 0.36, 1] as const
 
-const PRODUCT_LINKS = ["Features", "Pricing", "Benchmarks", "Changelog"]
-const DEV_LINKS = ["Docs", "API Reference", "SDKs", "Data Sources"]
+// Anchors on this page and files in the repo. "Changelog" and "SDKs" are gone
+// rather than pointed somewhere plausible — there is no changelog and there are
+// no SDKs, and a link to a page that does not exist is worse than no link.
+interface FooterLink {
+  label: string
+  href: string
+  /** Repo files open in a new tab; page anchors do not. */
+  external?: boolean
+}
+
+const PRODUCT_LINKS: FooterLink[] = [
+  { label: "Features", href: "#features" },
+  { label: "Benchmarks", href: "#benchmarks" },
+  { label: "Pricing", href: "#pricing" },
+  { label: "Live console", href: "#console" },
+]
+const DEV_LINKS: FooterLink[] = [
+  { label: "README", href: "https://github.com/ayushsingh82/hydradb2#readme", external: true },
+  { label: "HydraDB notes", href: "https://github.com/ayushsingh82/hydradb2/blob/main/HYDRADB-NOTES.md", external: true },
+  { label: "Status", href: "https://github.com/ayushsingh82/hydradb2/blob/main/completion.md", external: true },
+  { label: "Plan", href: "https://github.com/ayushsingh82/hydradb2/blob/main/plan.md", external: true },
+]
 
 export function Footer() {
   return (
@@ -47,10 +67,15 @@ export function Footer() {
               ))}
             </div>
             <div className="flex items-center gap-2 mt-1">
-              {[{ icon: Code2, label: "GitHub" }, { icon: ExternalLink, label: "Docs" }].map(({ icon: Icon, label }) => (
+              {[
+                { icon: Code2, label: "GitHub", href: "https://github.com/ayushsingh82/hydradb2" },
+                { icon: ExternalLink, label: "Docs", href: "https://github.com/ayushsingh82/hydradb2#readme" },
+              ].map(({ icon: Icon, label, href }) => (
                 <motion.a
                   key={label}
-                  href="#"
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.95 }}
                   aria-label={label}
@@ -74,8 +99,13 @@ export function Footer() {
             <div className="flex flex-col gap-3">
               <span className="text-[9px] font-mono tracking-[0.3em] uppercase text-white/30 mb-1">Product</span>
               {PRODUCT_LINKS.map((link) => (
-                <Link key={link} href="#" className="text-xs font-mono text-white/50 hover:text-white transition-colors">
-                  {link}
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  {...(link.external ? { target: "_blank", rel: "noreferrer" } : {})}
+                  className="text-xs font-mono text-white/50 hover:text-white transition-colors"
+                >
+                  {link.label}
                 </Link>
               ))}
             </div>
@@ -83,8 +113,13 @@ export function Footer() {
             <div className="flex flex-col gap-3">
               <span className="text-[9px] font-mono tracking-[0.3em] uppercase text-white/30 mb-1">Developers</span>
               {DEV_LINKS.map((link) => (
-                <Link key={link} href="#" className="text-xs font-mono text-white/50 hover:text-white transition-colors">
-                  {link}
+                <Link
+                  key={link.label}
+                  href={link.href}
+                  {...(link.external ? { target: "_blank", rel: "noreferrer" } : {})}
+                  className="text-xs font-mono text-white/50 hover:text-white transition-colors"
+                >
+                  {link.label}
                 </Link>
               ))}
             </div>
