@@ -15,7 +15,9 @@ export interface RegistryPackageMeta {
 
 /** GET https://registry.npmjs.org/{name} — full package document. */
 async function fetchNpmMeta(name: string): Promise<RegistryPackageMeta> {
-  const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`)
+  const res = await fetch(`https://registry.npmjs.org/${encodeURIComponent(name)}`, {
+    cache: "no-store",
+  })
   if (!res.ok) {
     throw new Error(`npm registry request failed (${res.status}) for ${name}`)
   }
@@ -69,7 +71,9 @@ function parseAddressList(field?: string, fallbackName?: string): RegistryMainta
 
 /** GET https://pypi.org/pypi/{name}/json — full project document. */
 async function fetchPypiMeta(name: string): Promise<RegistryPackageMeta> {
-  const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(name)}/json`)
+  const res = await fetch(`https://pypi.org/pypi/${encodeURIComponent(name)}/json`, {
+    cache: "no-store",
+  })
   if (!res.ok) {
     throw new Error(`PyPI registry request failed (${res.status}) for ${name}`)
   }

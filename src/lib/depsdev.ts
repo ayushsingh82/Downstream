@@ -45,7 +45,7 @@ export async function getDependencyGraph(
 ): Promise<DepsDevDependencyGraph> {
   const system = SYSTEM_MAP[ecosystem]
   const url = `${BASE_URL}/systems/${system}/packages/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}:dependencies`
-  const res = await fetch(url)
+  const res = await fetch(url, { cache: "no-store" })
   if (!res.ok) {
     throw new Error(`deps.dev dependency graph request failed (${res.status}) for ${ecosystem}/${name}@${version}`)
   }
@@ -82,7 +82,7 @@ export async function getVersionInfo(
 ): Promise<DepsDevVersionInfo> {
   const system = SYSTEM_MAP[ecosystem]
   const url = `${BASE_URL}/systems/${system}/packages/${encodeURIComponent(name)}/versions/${encodeURIComponent(version)}`
-  const res = await fetch(url)
+  const res = await fetch(url, { cache: "no-store" })
   if (!res.ok) {
     throw new Error(
       `deps.dev version info request failed (${res.status}) for ${ecosystem}/${name}@${version}`
@@ -94,7 +94,7 @@ export async function getVersionInfo(
 export async function getPackageInfo(ecosystem: Ecosystem, name: string): Promise<DepsDevPackageInfo> {
   const system = SYSTEM_MAP[ecosystem]
   const url = `${BASE_URL}/systems/${system}/packages/${encodeURIComponent(name)}`
-  const res = await fetch(url)
+  const res = await fetch(url, { cache: "no-store" })
   if (!res.ok) {
     throw new Error(`deps.dev package info request failed (${res.status}) for ${ecosystem}/${name}`)
   }

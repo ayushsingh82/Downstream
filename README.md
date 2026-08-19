@@ -125,6 +125,14 @@ docker run -d --name hydradb --user "$(id -u):$(id -g)" \
 # aborts with a stack overflow on the first query.
 ```
 
+> **One node per project.** Vertex writes get slower as the *whole* graph grows,
+> not just your slice of it — the only executable vertex form is an unlabeled
+> `MERGE (n {id})`, with the label applied by a following `SET`, so there is no
+> label index to narrow it. The same write measured 93ms on an empty node and
+> 6,258ms on one that also held ~1.5M vertices from another workload. Two
+> projects sharing a graph-node is not just contention; the larger one taxes
+> every write the smaller one makes.
+
 > **Use `CLOUD_PROVIDER=memory`, not `local`.** The local-filesystem object
 > store does not implement conditional writes — after enough writes SlateDB
 > needs a `PutMode::Update` on its manifest and `LocalFileSystem` rejects it,

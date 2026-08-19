@@ -53,7 +53,16 @@ function headers(): Record<string, string> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`https://api.github.com${path}`, { headers: headers() })
+  // `cache: "no-store"` is load-bearing, not hygiene. Next caches fetch() inside
+  // route handlers, and this endpoint's most likely failure is a 403 from the
+  // 60-request-an-hour unauthenticated limit — which then gets cached and
+  // replayed long after the limit resets, so identity resolution silently keeps
+  // returning nothing. Observed exactly that: a repo that resolved 11 identities
+  // returned 1 for the rest of the session.
+  const res = await fetch(`https://api.github.com${path}`, {
+    headers: headers(),
+    cache: "no-store",
+  })
   if (res.status === 403 || res.status === 429) {
     const remaining = res.headers.get("x-ratelimit-remaining")
     throw new Error(

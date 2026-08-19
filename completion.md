@@ -78,6 +78,26 @@ So the answer was restructured into two queries that are honest about what they 
   does not record the dependency. Costs minutes on a hub package, and the console runs it as
   a second pass that reports whether it found anything the first pass missed.
 
+## Verified on a clean node, end to end
+
+Everything below ran against a graph-node started empty, seeded only by the app's own
+ingest path:
+
+| step | result |
+|---|---|
+| `express@4.19.2` (npm) | 70 packages, 71 versions, 128 `RESOLVES_TO`, 5 npm maintainers, 11 GitHub identities, 3 typosquat edges |
+| `body-parser@1.20.2` (npm) | 44 packages, 4 maintainers, 11 GitHub identities, 3 handles matching npm exactly |
+| `requests@2.31.0` (PyPI) | 5 packages, 5 versions, 3 maintainers |
+| compromise `cookie@0.6.0` | **both** services exposed in **80ms** total — lockfile pass 3ms, closure 15ms, 2 versions walked, 7 queries |
+| compromise `urllib3@2.7.0` (PyPI) | `ml-scoring` exposed, 14ms total, lockfile pass 2ms |
+| OSV scan | 2 scanned, 2 affected, 895ms — `GHSA-qwcr-r2fm-qrc7`/`GHSA-v422-hmwv-36x6` on body-parser, `GHSA-qw6h-vgh9-j6wx` on express |
+| typosquat | `expres` (d1), `expresss` (d1), `expressjs` (d2) |
+| shared maintainer | `body-parser` reachable from `express` via the GitHub identity `UlisesGascon` |
+
+The compromised package is a transitive dependency: neither service names `cookie` in a
+manifest, and the closure agrees with the lockfile pass rather than adding to it, which is
+the case where a complete lockfile means the fast query was already the whole answer.
+
 ## Done
 
 - [x] Landing page (navbar, hero, marquee, bento grid, feature cards, how-it-works,

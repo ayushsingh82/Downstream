@@ -25,6 +25,7 @@ export async function queryBatch(queries: OsvQuery[]): Promise<OsvVulnRef[][]> {
   const res = await fetch("https://api.osv.dev/v1/querybatch", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    cache: "no-store",
     body: JSON.stringify({
       queries: queries.map((q) => ({
         version: q.version,
@@ -48,7 +49,9 @@ export interface OsvVulnDetail {
 
 /** GET https://api.osv.dev/v1/vulns/{id} — full advisory record. */
 export async function getVuln(id: string): Promise<OsvVulnDetail> {
-  const res = await fetch(`https://api.osv.dev/v1/vulns/${encodeURIComponent(id)}`)
+  const res = await fetch(`https://api.osv.dev/v1/vulns/${encodeURIComponent(id)}`, {
+    cache: "no-store",
+  })
   if (!res.ok) {
     throw new Error(`OSV.dev vuln lookup failed (${res.status}) for ${id}`)
   }
