@@ -787,13 +787,29 @@ export interface GraphVersionRow {
  * The package versions currently in the graph, for scanning against an advisory
  * feed. `LIMIT` is mandatory rather than optional: this is the one query in the
  * app whose result set grows with the whole registry.
+ *
+ * `maintainedOnly` (the default) restricts the scan to packages that have at
+ * least one `Maintainer` edge. That sounds arbitrary and is not: maintainers
+ * come from the registry, so only packages genuinely ingested from npm or PyPI
+ * have them. A graph that also holds load-test fixtures — which have no
+ * maintainers, because no registry ever heard of them — would otherwise spend
+ * its OSV budget asking about package names that do not exist. `LIMIT` has no
+ * ordering to lean on here, since this Cypher subset cannot filter names by
+ * pattern.
  */
-export async function listGraphVersions(limit = 500): Promise<GraphVersionRow[]> {
-  const { rows } = await runQuery<GraphVersionRow>(
-    `MATCH (p:Package)-[:HAS_VERSION]->(v:PackageVersion)
-     RETURN v.id AS versionId, p.name AS name, p.ecosystem AS ecosystem, v.version AS version
-     LIMIT $limit`,
-    { params: { limit } }
-  )
+export async function listGraphVersions(
+  limit = 500,
+  maintainedOnly = true
+): Promise<GraphVersionRow[]> {
+  const query = maintainedOnly
+    ? `MATCH (m:Maintainer)-[:MAINTAINS]->(p:Package)-[:HAS_VERSION]->(v:PackageVersion)
+       RETURN DISTINCT v.id AS versionId, p.name AS name, p.ecosystem AS ecosystem,
+                       v.version AS version
+       LIMIT $limit`
+    : `MATCH (p:Package)-[:HAS_VERSION]->(v:PackageVersion)
+       RETURN v.id AS versionId, p.name AS name, p.ecosystem AS ecosystem, v.version AS version
+       LIMIT $limit`
+
+  const { rows } = await runQuery<GraphVersionRow>(query, { params: { limit } })
   return rows
 }

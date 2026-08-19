@@ -21,7 +21,11 @@ export async function GET(req: NextRequest) {
   const ecosystem = (params.get("ecosystem") as Ecosystem | null) ?? "npm"
 
   const startedAt = Date.now()
-  const versions = (await listGraphVersions(limit)).filter(
+  // ?scope=all scans every package in the graph; the default scans only those
+  // with registry maintainers, which is what keeps load-test fixtures out of the
+  // OSV request budget.
+  const maintainedOnly = params.get("scope") !== "all"
+  const versions = (await listGraphVersions(limit, maintainedOnly)).filter(
     (row) => (row.ecosystem ?? "npm") === ecosystem
   )
 

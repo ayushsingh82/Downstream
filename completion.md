@@ -109,7 +109,11 @@ So the answer was restructured into two queries that are honest about what they 
       registry back out of the graph and `--closure` to include the full upstream walk
 - [x] `GET /api/advisories` — scans the graph's versions against OSV.dev `querybatch` and
       returns the ones carrying a real advisory, so a compromise can be seeded from a public
-      feed rather than a hardcoded demo target
+      feed rather than a hardcoded demo target. Scoped to packages with registry maintainers
+      by default, which is what keeps a mixed graph's load-test fixtures out of the OSV
+      request budget. Verified live on a graph holding both: 2 scanned, 2 affected, 1.2s —
+      `GHSA-qwcr-r2fm-qrc7` and `GHSA-v422-hmwv-36x6` on `body-parser@1.20.2`,
+      `GHSA-qw6h-vgh9-j6wx` on `express@4.19.2`
 - [x] **Graph visualisation** (`src/components/blast-graph.tsx`) — the exposure chains drawn
       as an SVG laid out by hop distance from the compromise, with hover isolating one
       chain. Layout comes from the paths themselves rather than a force simulation, because
@@ -140,11 +144,11 @@ So the answer was restructured into two queries that are honest about what they 
       per incident; nothing here does that yet.
 - [ ] **Typosquat corpus is caller-supplied.** A real deployment needs a background job
       populating it from the broader registry.
-- [ ] **The advisory scan reads an arbitrary slice of the graph.** `LIMIT` with no ordering,
-      because this Cypher subset has no way to filter package names by pattern — so on a
-      graph that also holds load-test data, the scan can spend its OSV budget on synthetic
-      names. `scripts/scale-check.mjs --cleanup` removes those, but the ordering problem is
-      real for any mixed graph.
+- [ ] **A load-test graph cannot be removed once written.** `--cleanup` works on demo-sized
+      fixtures and refuses anything larger with instructions, because writes serialise behind
+      one writer lease: ~169,000 delete statements at ~280ms each is thirteen hours whatever
+      concurrency is used. The practical remedy is resetting the node's store, which this
+      project cannot do for a store it shares with something else.
 - [ ] **Nothing re-checks a closure after the graph changes.** A service whose lockfile is
       updated after an incident is not re-evaluated; there is no subscription or diff.
 - [ ] Demo video not recorded.

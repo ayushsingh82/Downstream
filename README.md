@@ -159,7 +159,7 @@ Readiness check: `curl -sf localhost:9090/readyz`.
 | `POST /api/compromise` | Flag a version, then bookmark-read its blast radius back |
 | `GET /api/blast-radius` | Blast radius + shared maintainers + live-window lockfiles + optional path explanation |
 | `GET /api/typosquat` | Precomputed `NAME_SIMILAR_TO` neighbours |
-| `GET /api/advisories` | Scan the graph's versions against OSV.dev and return the ones with real advisories |
+| `GET /api/advisories` | Scan the graph's versions against OSV.dev and return the ones with real advisories (`?scope=all` to include packages with no registry maintainers) |
 
 ```bash
 curl -X POST localhost:3000/api/ingest -H 'content-type: application/json' \
@@ -182,13 +182,20 @@ and then runs the incident query on it.
 ```bash
 node scripts/scale-check.mjs --versions 100000 --services 200   # build and measure
 node scripts/scale-check.mjs --versions 100000 --skip-write     # measure only
-node scripts/scale-check.mjs --versions 100000 --cleanup        # remove what it wrote
+node scripts/scale-check.mjs --versions 3000 --cleanup           # remove a demo-sized fixture
 node scripts/scale-check.mjs --versions 3000 --closure          # include the full upstream walk
 ```
 
 It writes through the same two `UNWIND` forms the app uses, and prints the lockfile answer,
 the `sspaths` answer and (with `--closure`) the enumerated one side by side, so the path cap
 is demonstrated rather than asserted.
+
+`--cleanup` only handles demo-sized fixtures (5,000 vertices or fewer) and refuses larger
+ones with instructions rather than grinding. Removing a load-test graph statement by
+statement is not practical: writes serialise behind a single writer lease, so ~169,000
+delete statements at ~280ms each is about thirteen hours whatever concurrency you use.
+Resetting the node's store — a restart for a memory-backed node, or clearing the bucket for
+an object-store one — takes seconds.
 
 ## HydraDB notes
 

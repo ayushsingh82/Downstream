@@ -67,24 +67,63 @@ for (let i = 2; i < process.argv.length; i++) {
   }
 }
 
+/**
+ * Retries, because both failure modes this script hits are transient and the app
+ * client (src/lib/hydradb.ts) already survives them:
+ *
+ *  - `500 internal query execution error` — SlateDB's manifest writer panics
+ *    under sustained ingestion, the node promotes a new writer and continues.
+ *  - `400 GraphSnapshot query is not supported yet: historical graph epochs are
+ *    not SlateDB snapshots` — seen against a node still recovering from that
+ *    promotion. It clears on its own; the same statement succeeds seconds later.
+ *
+ * Retrying is safe because every statement here is idempotent: vertices and
+ * edges are keyed by a deterministic id and written with MERGE, and deleting an
+ * edge twice is the same as deleting it once.
+ */
+const MAX_ATTEMPTS = 6
+const BASE_BACKOFF_MS = 400
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+function isTransient(status, body) {
+  if (status >= 500 || status === 429) return true
+  return status === 400 && body.includes("GraphSnapshot")
+}
+
 async function query(cypher, parameters, consistency = "causal") {
-  const res = await fetch(`${args.http}/v1/graphs/${args.graph}/query`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${args.token}`,
-      "X-Graph-Namespace": args.namespace,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      cell_id: args.cell,
-      query: cypher,
-      ...(parameters ? { parameters } : {}),
-      consistency,
-    }),
-  })
-  const text = await res.text()
-  if (!res.ok) throw new Error(`graph-node ${res.status}: ${text.slice(0, 300)}`)
-  return JSON.parse(text)
+  for (let attempt = 1; ; attempt++) {
+    let res, text
+    try {
+      res = await fetch(`${args.http}/v1/graphs/${args.graph}/query`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${args.token}`,
+          "X-Graph-Namespace": args.namespace,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          cell_id: args.cell,
+          query: cypher,
+          ...(parameters ? { parameters } : {}),
+          consistency,
+        }),
+      })
+      text = await res.text()
+    } catch (error) {
+      // The node drops sockets while it restarts its writer.
+      if (attempt >= MAX_ATTEMPTS) throw error
+      await sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1))
+      continue
+    }
+
+    if (res.ok) return JSON.parse(text)
+
+    if (attempt >= MAX_ATTEMPTS || !isTransient(res.status, text)) {
+      throw new Error(`graph-node ${res.status}: ${text.slice(0, 300)}`)
+    }
+    await sleep(BASE_BACKOFF_MS * 2 ** (attempt - 1))
+  }
 }
 
 /** Byte-for-byte the identity src/lib/id.ts computes, so ids line up with the app. */
@@ -291,9 +330,38 @@ if (!args.skipWrite) {
 // every package it finds and would spend that budget on names that do not
 // exist. `DELETE` is accepted by the mutation engine and, like every other
 // write here, has to bind its target by id inside the pattern.
+/**
+ * Above this many vertices, removing the graph one statement at a time is not a
+ * cleanup, it is an overnight job. Writes serialise behind a single writer
+ * lease, so concurrency does not help: measured at ~280ms per edge-delete
+ * statement on an idle node, 168,926 of them is roughly thirteen hours. Resetting
+ * the node's store is seconds. The threshold is where the two cross over.
+ */
+const CLEANUP_VERTEX_CEILING = 5_000
+
 if (args.cleanup) {
   const started = Date.now()
   const resolvedAt = Date.UTC(2026, 7, 1)
+  const vertexCount = allVersions.length * 2 + args.services * 3
+
+  if (vertexCount > CLEANUP_VERTEX_CEILING) {
+    const statements = allVersions.length * 2 + args.services * 3
+    console.error(
+      `This graph is too large to remove statement by statement.\n\n` +
+        `  ${vertexCount} vertices, ~${statements} delete statements at ~280ms each.\n` +
+        `  Writes serialise behind one writer lease, so that is hours, not minutes.\n\n` +
+        `Reset the node's store instead — for a memory-backed node that is just a\n` +
+        `restart, and for an object-store-backed one, clear its bucket first:\n\n` +
+        `  docker rm -f hydradb\n` +
+        `  docker run --rm --network container:minio --entrypoint sh minio/mc -c \\\n` +
+        `    "mc alias set local http://127.0.0.1:9000 minioadmin minioadmin && \\\n` +
+        `     mc rb --force --dangerous local/hydradb && mc mb local/hydradb"\n` +
+        `  # then re-run the docker run from README.md\n\n` +
+        `--cleanup is for taking a demo-sized fixture back out (${CLEANUP_VERTEX_CEILING} vertices\n` +
+        `or fewer), not for undoing a load test.`
+    )
+    process.exit(1)
+  }
 
   // Edges first, and separately, because vertex deletion is the operation the
   // node refuses at size. `DELETE n` and `DETACH DELETE n` both scan every edge
@@ -322,18 +390,22 @@ if (args.cleanup) {
     ])
   }
 
+  // Edge deletion is one statement per vertex, so this is the one phase whose
+  // cost is a round-trip count rather than a payload size. The node serves
+  // hundreds of these a second; four at a time would be an hour of waiting.
+  const deleteConcurrency = Math.max(args.concurrency, 24)
   let done = 0
   const totalSources = edgePatterns.reduce((n, [, , , ids]) => n + ids.length, 0)
   for (const [fromLabel, relType, toLabel, ids] of edgePatterns) {
-    for (let i = 0; i < ids.length; i += args.concurrency) {
+    for (let i = 0; i < ids.length; i += deleteConcurrency) {
       await Promise.all(
         ids
-          .slice(i, i + args.concurrency)
+          .slice(i, i + deleteConcurrency)
           .map((id) =>
             query(`MATCH (s:${fromLabel} {id: $id})-[r:${relType}]->(d:${toLabel}) DELETE r`, { id })
           )
       )
-      done += Math.min(args.concurrency, ids.length - i)
+      done += Math.min(deleteConcurrency, ids.length - i)
       process.stdout.write(`\r  edges from ${done}/${totalSources} vertices   `)
     }
   }
