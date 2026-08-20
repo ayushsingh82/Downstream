@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 
 const LOG_LINES = [
-  "> Initializing radius scan runtime...",
+  "> Initializing downstream scan runtime...",
   "> Loading dependency graph index...",
   "> Ecosystem: npm + PyPI",
   "> Package flagged: COMPROMISED",

@@ -12,7 +12,7 @@ export function SubpageHeader({ label }: { label: string }) {
     <header className="sticky top-0 z-50 flex items-center justify-between border-b-2 border-black bg-white px-6 py-4 lg:px-12">
       <Link href="/" className="flex items-center gap-3">
         <Radar size={18} strokeWidth={2} className="text-[#FC0001]" />
-        <span className="text-sm font-black uppercase tracking-[0.3em]">radius</span>
+        <span className="text-sm font-black uppercase tracking-[0.3em]">downstream</span>
         <span className="hidden text-[10px] uppercase tracking-[0.25em] text-neutral-400 sm:inline">
           / {label}
         </span>

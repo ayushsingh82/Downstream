@@ -47,7 +47,7 @@ export function Footer() {
           <div className="flex flex-col gap-4 max-w-xs">
             <div className="flex items-center gap-2.5">
               <Radar size={18} strokeWidth={2} className="text-[#FC0001]" />
-              <span className="text-sm font-mono tracking-[0.25em] uppercase font-black text-white">radius</span>
+              <span className="text-sm font-mono tracking-[0.25em] uppercase font-black text-white">downstream</span>
             </div>
             <p className="text-xs font-mono text-white/50 leading-relaxed">
               Know your blast radius before the worm does.

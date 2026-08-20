@@ -38,10 +38,10 @@ const STATS = [
   { label: "Ecosystems", value: "2", sub: "npm + PyPI", highlight: false },
 ]
 
-// Radius's figure is measured. The comparison rows describe what each tool
+// Downstream's figure is measured. The comparison rows describe what each tool
 // structurally can and cannot do — they are capability claims, not timings we ran.
 const BENCHMARK_ROWS = [
-  { name: "Radius (lockfile pass)", score: 96.00, display: "110 ms, measured at 84K versions", leader: true },
+  { name: "Downstream (lockfile pass)", score: 96.00, display: "110 ms, measured at 84K versions", leader: true },
   { name: "Manual audit",      score: 8.00,  display: "Hours", leader: false },
   { name: "npm audit",         score: 20.00, display: "No reverse closure", leader: false },
   { name: "Dependabot alerts", score: 35.00, display: "Per-repo, no service map", leader: false },
@@ -195,7 +195,7 @@ export function AboutSection() {
           {/* Column headers */}
           <div className="grid grid-cols-4 px-6 py-2.5 border-b border-border bg-muted/40">
             <span className="col-span-2 text-[9px] tracking-widest uppercase text-muted-foreground font-mono">Capability</span>
-            <span className="text-[9px] tracking-widest uppercase text-[#FC0001] font-mono text-center font-bold">Radius</span>
+            <span className="text-[9px] tracking-widest uppercase text-[#FC0001] font-mono text-center font-bold">Downstream</span>
             <span className="text-[9px] tracking-widest uppercase text-muted-foreground font-mono text-right">Manual</span>
           </div>
 
@@ -237,7 +237,7 @@ export function AboutSection() {
         transition={{ delay: 0.6, duration: 0.5 }}
         className="mt-3 text-[10px] font-mono text-muted-foreground text-right"
       >
-        Scenario modeled on public TanStack npm/PyPI incident reporting · Radius timings measured on a local graph-node; comparison rows are capability claims
+        Scenario modeled on public TanStack npm/PyPI incident reporting · Downstream timings measured on a local graph-node; comparison rows are capability claims
       </motion.p>
     </section>
   )

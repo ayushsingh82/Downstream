@@ -8,7 +8,7 @@ const jetbrainsMono = JetBrains_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Radius | Supply Chain Blast Radius on HydraDB",
+  title: "Downstream | Supply Chain Blast Radius on HydraDB",
   description:
     "A live npm and PyPI dependency graph on HydraDB. Trace exposure, shared maintainers, and resolved lockfiles the instant a package is compromised.",
   keywords: [
@@ -21,8 +21,8 @@ export const metadata: Metadata = {
     "HydraDB",
     "vulnerability detection",
   ],
-  authors: [{ name: "Radius" }],
-  creator: "Radius",
+  authors: [{ name: "Downstream" }],
+  creator: "Downstream",
 }
 
 export const viewport: Viewport = {

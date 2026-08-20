@@ -49,7 +49,7 @@ export function MetricsCard() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between border-b-2 border-foreground px-4 py-2">
-        <span className="text-[10px] tracking-widest text-muted-foreground uppercase">radius.metrics</span>
+        <span className="text-[10px] tracking-widest text-muted-foreground uppercase">downstream.metrics</span>
         <span className="inline-block h-2 w-2 rounded-full bg-[#FC0001]" />
       </div>
       <div className="flex-1 flex flex-col justify-center gap-6 p-6">

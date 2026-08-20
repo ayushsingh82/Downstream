@@ -123,8 +123,8 @@ export function HeroSection() {
           transition={{ duration: 0.7, ease }}
           className="text-5xl sm:text-7xl lg:text-8xl xl:text-9xl font-mono font-black tracking-tighter text-foreground mb-3 select-none uppercase leading-[0.9]"
         >
-          BLAST.<br />
-          <span className="text-[#FC0001]">RADIUS.</span>
+          TRACE THE<br />
+          <span className="text-[#FC0001]">DOWNSTREAM.</span>
         </motion.h1>
 
         {/* Sub */}

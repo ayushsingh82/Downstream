@@ -30,7 +30,7 @@ export function Navbar() {
               className="flex items-center gap-2.5"
             >
               <Radar size={17} strokeWidth={2} className="text-[#FC0001]" />
-              <span className="text-xs font-mono tracking-[0.3em] uppercase font-black">radius</span>
+              <span className="text-xs font-mono tracking-[0.3em] uppercase font-black">downstream</span>
             </motion.div>
           </Link>
 
