@@ -96,12 +96,20 @@ export async function getRepoIdentities(
     `/repos/${encodeURIComponent(ref.owner)}/${encodeURIComponent(ref.repo)}/contributors?per_page=${maxContributors}`
   ).catch(() => [])
 
+  // Bots are not an identity pivot. `dependabot[bot]` contributes to half the
+  // registry, so leaving it in links every package to every other package
+  // through an account nobody can take over in the sense this query means.
+  // GitHub marks them `type: "Bot"`; the login suffix catches the rest.
+  const isBot = (login: string, type?: string) =>
+    type === "Bot" || /\[bot\]$/i.test(login)
+
   const identities: GithubIdentity[] = []
-  if (repo.owner?.login) {
+  if (repo.owner?.login && !isBot(repo.owner.login, repo.owner.type)) {
     identities.push({ login: repo.owner.login, role: "owner", contributions: 0, type: repo.owner.type })
   }
   for (const contributor of contributors) {
     if (!contributor.login) continue
+    if (isBot(contributor.login, contributor.type)) continue
     if (identities.some((i) => i.login === contributor.login)) continue
     identities.push({
       login: contributor.login,
