@@ -1,10 +1,10 @@
-# Radius — Supply Chain Blast Radius
+# Downstream — Supply Chain Blast Radius
 
 **Hack Hydra** · Track 2, Option A · Aug 12–20, 2026 · Built on [HydraDB](https://github.com/hydra-db/hydradb)
 
 A package is flagged compromised at 09:00. Which of our services are exposed by 09:06?
 
-Radius keeps the **resolved** npm/PyPI dependency graph in HydraDB alongside a map of
+Downstream keeps the **resolved** npm/PyPI dependency graph in HydraDB alongside a map of
 internal services and the lockfiles they ship. Marking a version compromised resolves the
 reverse-dependency closure out to every affected service in one native traversal.
 

@@ -101,7 +101,7 @@ the case where a complete lockfile means the fast query was already the whole an
 ## Done
 
 - [x] Landing page (navbar, hero, marquee, bento grid, feature cards, how-it-works,
-      benchmarks, pricing, CTA, footer) — branded "Radius," red accent
+      benchmarks, pricing, CTA, footer) — branded "Downstream," red accent
 - [x] **Live incident console** wired to the real API — seed → compromise → typosquat, with
       measured elapsed time, hop chains, and a truncation warning when the traversal hits
       its path cap
