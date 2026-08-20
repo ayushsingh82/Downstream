@@ -18,8 +18,8 @@ interface FooterLink {
 
 const PRODUCT_LINKS: FooterLink[] = [
   { label: "Features", href: "#features" },
+  { label: "Docs", href: "/docs" },
   { label: "Benchmarks", href: "#benchmarks" },
-  { label: "Pricing", href: "#pricing" },
   { label: "Live console", href: "#console" },
 ]
 const DEV_LINKS: FooterLink[] = [

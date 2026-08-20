@@ -20,22 +20,21 @@ export function CtaSection() {
           transition={{ duration: 0.6, ease }}
           className="text-center"
         >
-          <div className="text-[10px] font-mono tracking-[0.3em] uppercase text-white/40 mb-6">
-            Get started today
+          <div className="text-[10px] font-mono tracking-[0.3em] uppercase text-white/70 mb-6">
+            See it work
           </div>
           <h2 className="text-4xl lg:text-6xl font-mono font-black uppercase tracking-tight text-white leading-[0.95] mb-6">
             Your dependencies.<br />
             <span className="text-white/40">Never blind.</span>
           </h2>
           <p className="text-sm font-mono text-white/60 max-w-lg mx-auto mb-10 leading-relaxed">
-            Ingest your first dependency subtree in under two minutes, against a
-            graph-node running on your own machine. Know your blast radius before
-            the worm does.
+            A real HydraDB graph-node, a real deps.dev dependency subtree, one
+            compromise, traced live. Know your blast radius before the worm does.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-16">
             <Link
-              href="#console"
+              href="/dashboard"
               className="group flex items-center gap-0 bg-white text-[#FC0001] text-sm font-mono font-black tracking-widest uppercase hover:opacity-90 transition-opacity"
             >
               <span className="flex items-center justify-center w-12 h-12 bg-foreground">
@@ -47,31 +46,29 @@ export function CtaSection() {
                   <ArrowRight size={18} strokeWidth={3} className="text-white" />
                 </motion.span>
               </span>
-              <span className="px-8 py-3">Run a Scan</span>
+              <span className="px-8 py-3">Open Dashboard</span>
             </Link>
             <Link
-              href="https://github.com/ayushsingh82/hydradb2#readme"
-            target="_blank"
-            rel="noreferrer"
+              href="#console"
               className="text-[11px] font-mono tracking-widest uppercase text-white/50 hover:text-white transition-colors border border-white/20 px-8 py-3.5"
             >
-              Read the Docs
+              Jump to Console
             </Link>
           </div>
 
           {/* Bottom stats row */}
           <div className="grid grid-cols-3 border border-white/20 max-w-xl mx-auto">
             {[
-              { val: "Free", label: "To start" },
-              { val: "<2 min", label: "To integrate" },
-              { val: "Zero", label: "Cards required" },
+              { val: "110ms", label: "Blast radius" },
+              { val: "128", label: "Resolved edges" },
+              { val: "2", label: "Ecosystems" },
             ].map((item, i) => (
               <div
                 key={item.label}
                 className={`flex flex-col items-center py-4 px-3 ${i < 2 ? "border-r border-white/20" : ""}`}
               >
                 <span className="text-lg font-mono font-black text-white">{item.val}</span>
-                <span className="text-[9px] font-mono tracking-widest uppercase text-white/40">{item.label}</span>
+                <span className="text-[9px] font-mono tracking-widest uppercase text-white/70">{item.label}</span>
               </div>
             ))}
           </div>

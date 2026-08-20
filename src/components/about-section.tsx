@@ -108,17 +108,17 @@ export function AboutSection() {
               ${stat.highlight ? "bg-[#FC0001]" : "bg-white"}`}
           >
             {stat.highlight && (
-              <span className="absolute top-3 right-3 text-[8px] font-mono tracking-widest uppercase text-white/50">
+              <span className="absolute top-3 right-3 text-[10px] font-mono tracking-widest uppercase text-white/80">
                 FAST
               </span>
             )}
-            <span className={`text-[9px] tracking-[0.25em] uppercase font-mono font-bold ${stat.highlight ? "text-white/60" : "text-muted-foreground"}`}>
+            <span className={`text-[10px] tracking-[0.25em] uppercase font-mono font-bold ${stat.highlight ? "text-white/85" : "text-muted-foreground"}`}>
               {stat.label}
             </span>
             <span className={`text-4xl lg:text-5xl font-mono font-black tracking-tight ${stat.highlight ? "text-white" : "text-foreground"}`}>
               <ScrambleText text={stat.value} />
             </span>
-            <span className={`text-[10px] font-mono ${stat.highlight ? "text-white/50" : "text-muted-foreground"}`}>
+            <span className={`text-[10px] font-mono ${stat.highlight ? "text-white/75" : "text-muted-foreground"}`}>
               {stat.sub}
             </span>
           </motion.div>

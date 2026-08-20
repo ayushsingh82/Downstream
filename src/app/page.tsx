@@ -4,7 +4,6 @@ import { IncidentConsole } from "@/components/incident-console"
 import { FeatureGrid } from "@/components/feature-grid"
 import { HowItWorks } from "@/components/how-it-works"
 import { AboutSection } from "@/components/about-section"
-import { PricingSection } from "@/components/pricing-section"
 import { CtaSection } from "@/components/cta-section"
 import { Footer } from "@/components/footer"
 
@@ -33,7 +32,6 @@ export default function Page() {
         <HowItWorks />
         <FeatureGrid />
         <AboutSection />
-        <PricingSection />
         <CtaSection />
       </main>
       <Footer />
