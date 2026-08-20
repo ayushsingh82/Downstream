@@ -8,12 +8,27 @@ Downstream keeps the **resolved** npm/PyPI dependency graph in HydraDB alongside
 internal services and the lockfiles they ship. Marking a version compromised resolves the
 reverse-dependency closure out to every affected service in one native traversal.
 
+| | |
+|---|---|
+| **Blast radius** | **140 exposed services in 110ms** on an 84,163-version graph |
+| **Graph under test** | 84,163 versions · 332,985 resolved edges · 200 services · ~944,000 `PINS` |
+| **Data** | real deps.dev / npm / PyPI / OSV.dev — **no API key required** |
+| **HydraDB limits found** | **4**, each measured and written up in `HYDRADB-NOTES.md` |
+
 Measured on a local graph-node holding **84,163 package versions, 332,985 resolved
 dependency edges and 200 services**: compromising a package the whole graph sits on top of
 returns **140 exposed services in 110ms**. On the same graph the obvious one-call version
 of this query — `algo.SSpaths` across the whole closure — does not merely truncate, it is
 **refused**: `native_path_edges rejected by admission control: actual 1000034 exceeds limit
 1000000`. See **Two answers, not one** below.
+
+**Verify it in two minutes**, no API key: start the node, open the console, and click
+`seed real graph → compromise cookie@0.6.0`. `cookie` is a *transitive* dependency neither
+demo service names in its own manifest — the exposure exists only in the resolved graph.
+Setup is two commands below.
+
+Sibling submission: **[Ledger](https://github.com/0xshubhs/Ledger)** — Track 3, agent
+memory on the same database.
 
 ## Why this needs a graph database
 
