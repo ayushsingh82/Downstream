@@ -35,8 +35,8 @@ const LABEL_STYLE: Record<
   Service: { chip: "#0A7B34", chipText: "#FFFFFF", stroke: "#0A7B34", text: "#000000" },
 }
 
-const COLUMN_WIDTH = 216
-const NODE_WIDTH = 172
+const COLUMN_WIDTH = 272
+const NODE_WIDTH = 160
 const NODE_HEIGHT = 50
 const CHIP_HEIGHT = 17
 const ROW_HEIGHT = 80
@@ -271,8 +271,12 @@ export function BlastGraph({
             const startX = from.x + NODE_WIDTH / 2
             const endX = to.x - NODE_WIDTH / 2
             const midX = (startX + endX) / 2
+            // Capped to the gap between columns so a long relationship name
+            // (e.g. NAME_SIMILAR_TO) can't overflow under the neighbouring
+            // node boxes, which paint over the edge layer.
+            const maxChipWidth = Math.max(24, Math.abs(endX - startX) - 8)
             const chipLabel = edge.type
-            const chipWidth = chipLabel.length * 5.4 + 12
+            const chipWidth = Math.min(chipLabel.length * 5.4 + 12, maxChipWidth)
             const chipMidY = (from.y + to.y) / 2
             return (
               <g
